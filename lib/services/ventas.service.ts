@@ -32,47 +32,17 @@ export class VentasService {
     const total = items.reduce((sum, item) => sum + item.total, 0);
 
     return await runTransaction(db, async (transaction) => {
-      const ventaRef = doc(collection(db, this.COLLECTION));
+      // 1. ALL READS FIRST
+      const itemRefs = items.map(item => doc(db, this.PRODUCTOS_COLLECTION, item.producto_id));
+      const productoSnaps = await Promise.all(itemRefs.map(ref => transaction.get(ref)));
       
-      for (const item of items) {
-        const productoRef = doc(db, this.PRODUCTOS_COLLECTION, item.producto_id);
-        const productoSnap = await transaction.get(productoRef);
-        
-        if (!productoSnap.exists()) {
-          throw new Error(`Producto ${item.nombre} no encontrado`);
-        }
-
-        const producto = productoSnap.data() as Producto;
-        const nuevoStock = producto.stock_actual - item.neto;
-
-        if (nuevoStock < 0) {
-          throw new Error(`Stock insuficiente para ${item.nombre}. Disponible: ${producto.stock_actual}`);
-        }
-
-        transaction.update(productoRef, {
-          stock_actual: nuevoStock,
-          updatedAt: Timestamp.now()
-        });
-      }
-
-      let clienteNombre: string | undefined;
+      let clienteSnap;
       if (metodoPago === 'fiado' && clienteId) {
-        const clienteRef = doc(db, this.CLIENTES_COLLECTION, clienteId);
-        const clienteSnap = await transaction.get(clienteRef);
-        
-        if (!clienteSnap.exists()) {
-          throw new Error('Cliente no encontrado');
-        }
-
-        const cliente = clienteSnap.data() as Cliente;
-        clienteNombre = cliente.nombre;
-        
-        transaction.update(clienteRef, {
-          saldo_deuda: cliente.saldo_deuda + total,
-          updatedAt: Timestamp.now()
-        });
+        clienteSnap = await transaction.get(doc(db, this.CLIENTES_COLLECTION, clienteId));
       }
 
+      // Calculate sale number (Note: This is outside transaction.get but inside the block)
+      // This is still inefficient but solves the ordering issue for now.
       const ventasSnapshot = await getDocs(collection(db, this.COLLECTION));
       const ultimoNumeroVenta = ventasSnapshot.docs.reduce((max, ventaDoc) => {
         const numero = ventaDoc.data().numero_venta || 0;
@@ -80,18 +50,51 @@ export class VentasService {
       }, 0);
       const numeroVenta = ultimoNumeroVenta + 1;
 
-      const ventaDataBase: Omit<Venta, 'id'> = {
+      // 2. ALL WRITES AFTER
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const snap = productoSnaps[i];
+        
+        if (!snap.exists()) {
+          throw new Error(`Producto ${item.nombre} no encontrado`);
+        }
+
+        const producto = snap.data() as Producto;
+        const nuevoStock = producto.stock_actual - item.neto;
+        if (nuevoStock < 0) {
+          throw new Error(`Stock insuficiente para ${item.nombre}. Disponible: ${producto.stock_actual}`);
+        }
+
+        transaction.update(itemRefs[i], {
+          stock_actual: nuevoStock,
+          updatedAt: Timestamp.now()
+        });
+      }
+
+      let clienteNombre: string | undefined;
+      if (metodoPago === 'fiado' && clienteId && clienteSnap) {
+        if (!clienteSnap.exists()) {
+          throw new Error('Cliente no encontrado');
+        }
+
+        const cliente = clienteSnap.data() as Cliente;
+        clienteNombre = cliente.nombre;
+        
+        transaction.update(clienteSnap.ref, {
+          saldo_deuda: (cliente.saldo_deuda || 0) + total,
+          updatedAt: Timestamp.now()
+        });
+      }
+
+      const ventaRef = doc(collection(db, this.COLLECTION));
+      const ventaData: Omit<Venta, 'id'> = {
         items,
         total,
         metodo_pago: metodoPago,
         sesion_id: sesionId,
         fecha: Timestamp.now(),
         numero_venta: numeroVenta,
-        createdAt: Timestamp.now()
-      };
-
-      const ventaData: Omit<Venta, 'id'> = {
-        ...ventaDataBase,
+        createdAt: Timestamp.now(),
         ...(clienteId ? { cliente_id: clienteId } : {}),
         ...(clienteNombre ? { cliente_nombre: clienteNombre } : {})
       };

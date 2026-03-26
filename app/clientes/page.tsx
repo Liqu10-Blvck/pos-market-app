@@ -102,23 +102,21 @@ export default function ClientesPage() {
     <div className="min-h-screen bg-background">
       <AppNav />
       
-      <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-        <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="flex items-center gap-3 text-2xl font-bold sm:text-3xl">
-              <Users className="h-8 w-8 text-primary shrink-0" />
+      <section className="border-b border-border/40 bg-card/40 backdrop-blur-xl">
+        <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="flex min-h-[72px] flex-col justify-center gap-1.5 sm:min-h-[84px]">
+            <h1 className="flex items-center gap-3 text-2xl font-black text-primary sm:text-3xl tracking-tight">
+              <Users className="h-8 w-8 shrink-0" />
               Gestión de Clientes
             </h1>
             <p className="mt-1 text-sm text-muted-foreground sm:text-base">
               Administra saldos, créditos y datos de contacto.
             </p>
           </div>
-          <Button onClick={() => handleAbrirModal()} size="lg" className="w-full sm:w-auto shadow-md">
-            <UserPlus className="mr-2 h-5 w-5" />
-            Nuevo Cliente
-          </Button>
-        </header>
+        </div>
+      </section>
 
+      <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
         <div className="mb-8 relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -135,12 +133,12 @@ export default function ClientesPage() {
               <CardHeader className="pb-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-bold">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary font-black shadow-inner">
                       {cliente.nombre.charAt(0).toUpperCase()}
                     </div>
-                    <CardTitle className="text-lg">{cliente.nombre}</CardTitle>
+                    <CardTitle className="text-lg font-black tracking-tight">{cliente.nombre}</CardTitle>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => handleAbrirModal(cliente)} className="opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button variant="ghost" size="icon" onClick={() => handleAbrirModal(cliente)} className="opacity-0 group-hover:opacity-100 transition-opacity rounded-xl">
                     <Plus className="h-4 w-4 rotate-45" />
                   </Button>
                 </div>
@@ -151,12 +149,12 @@ export default function ClientesPage() {
                   {cliente.telefono || 'Sin teléfono'}
                 </div>
                 
-                <div className="rounded-2xl bg-muted/30 p-4 dark:bg-muted/10">
+                <div className="rounded-2xl bg-muted/40 p-4 dark:bg-muted/10 border border-border/10">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-muted-foreground uppercase opacity-60">Saldo Deudor</span>
-                    <CreditCard className="h-3.5 w-3.5 opacity-40" />
+                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest opacity-60">Saldo Deudor</span>
+                    <CreditCard className="h-3.5 w-3.5 opacity-40 text-primary" />
                   </div>
-                  <div className={`text-xl font-black ${cliente.saldo_deuda > 0 ? 'text-amber-600' : 'text-green-600'}`}>
+                  <div className={`text-xl font-black tracking-tighter ${cliente.saldo_deuda > 0 ? 'text-amber-500 dark:text-amber-400' : 'text-green-600 dark:text-green-500'}`}>
                     {formatCLPCurrency(cliente.saldo_deuda)}
                   </div>
                 </div>

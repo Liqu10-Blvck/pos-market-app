@@ -29,12 +29,12 @@ export function ProductCardBento({ producto, onSelect, index }: ProductCardBento
       disabled={isOutOfStock}
       className={`
         group relative flex w-full flex-col overflow-hidden rounded-2xl p-4 text-left
-        bg-white border border-border/60 transition-all hover:border-primary/40 hover:shadow-md
+        bg-background dark:bg-card border border-border/40 transition-all duration-300 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5
         ${isOutOfStock ? 'opacity-50 grayscale cursor-not-allowed' : ''}
       `}
     >
       <div className="flex items-start justify-between mb-4">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/30 overflow-hidden group-hover:scale-110 transition-transform duration-500">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/40 dark:bg-muted/20 overflow-hidden group-hover:scale-110 transition-transform duration-500 border border-border/10">
           {asset.type === 'image' ? (
             <img src={asset.value} alt={producto.nombre} className="h-full w-full object-cover" />
           ) : asset.type === 'emoji' ? (
@@ -44,11 +44,11 @@ export function ProductCardBento({ producto, onSelect, index }: ProductCardBento
           )}
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider h-6">
+          <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest h-6 bg-muted/30 border-border/20">
             {producto.unidad}
           </Badge>
           {isLowStock && !isOutOfStock && (
-            <div className="flex items-center gap-1 text-[9px] font-bold text-amber-600 uppercase">
+            <div className="flex items-center gap-1 text-[9px] font-black text-amber-500 dark:text-amber-400 uppercase tracking-tighter">
               <AlertCircle className="h-3 w-3" />
               Stock bajo
             </div>
@@ -56,34 +56,34 @@ export function ProductCardBento({ producto, onSelect, index }: ProductCardBento
         </div>
       </div>
 
-      <div className="mb-4">
-        <h3 className="line-clamp-2 text-base font-bold text-foreground leading-tight">
+      <div className="mb-4 flex-1">
+        <h3 className="line-clamp-2 text-base font-black text-foreground leading-tight tracking-tight">
           {producto.nombre}
         </h3>
-        <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-1">
+        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.1em] mt-1.5 opacity-60">
           {producto.unidad === 'kg' ? 'Venta por peso' : 'Venta por unidad'}
         </p>
       </div>
 
-      <div className="mt-auto flex items-end justify-between">
+      <div className="mt-auto flex items-end justify-between pt-2 border-t border-border/10">
         <div className="flex flex-col">
-          <span className="text-xl font-bold text-primary">
+          <span className="text-xl font-black text-primary drop-shadow-sm">
             {formatCLPCurrency(producto.precio)}
           </span>
         </div>
         <div className="text-right">
-          <span className="text-sm font-bold block leading-none">
+          <span className="text-sm font-black block leading-none text-foreground">
             {producto.stock_actual}
           </span>
-          <span className="text-[9px] text-muted-foreground uppercase font-medium">
+          <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tighter">
             Disponibles
           </span>
         </div>
       </div>
 
       {isOutOfStock && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
-          <Badge variant="destructive" className="font-bold uppercase tracking-widest">Agotado</Badge>
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 dark:bg-card/80 backdrop-blur-[2px] transition-all duration-300">
+          <Badge variant="destructive" className="font-black uppercase tracking-[0.2em] shadow-lg">Agotado</Badge>
         </div>
       )}
     </motion.button>

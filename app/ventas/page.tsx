@@ -96,9 +96,32 @@ export default function VentasPage() {
     setModalPesajeOpen(true);
   };
 
-  const handleAgregarAlCarrito = (item: ItemVenta) => {
-    setCarrito(prev => [...prev, { ...item, temp_id: `${Date.now()}-${Math.random()}` }]);
-    toast({ title: 'Agregado', description: `${item.nombre} al carrito` });
+  const handleAgregarAlCarrito = (itemToScan: ItemVenta) => {
+    setCarrito(prev => {
+      const existing = prev.find(i => 
+        i.nombre === itemToScan.nombre && 
+        i.unidad === itemToScan.unidad && 
+        i.precio_unitario === itemToScan.precio_unitario
+      );
+      
+      if (existing) {
+        return prev.map(i => 
+          i.temp_id === existing.temp_id 
+            ? { 
+                ...i, 
+                neto: i.neto + itemToScan.neto, 
+                total: Math.round(i.total + itemToScan.total),
+                peso_bruto: (i.peso_bruto || 0) + (itemToScan.peso_bruto || 0),
+                tara: (i.tara || 0) + (itemToScan.tara || 0),
+                cantidad: (i.cantidad || 0) + (itemToScan.cantidad || 0)
+              } 
+            : i
+        );
+      }
+      
+      return [...prev, { ...itemToScan, temp_id: `${Date.now()}-${Math.random()}` }];
+    });
+    toast({ title: 'Agregado', description: `${itemToScan.nombre} al carrito` });
   };
 
   const handleEliminarItem = (tempId: string) => {
@@ -176,7 +199,7 @@ export default function VentasPage() {
                   <p className="text-sm font-medium">Búsqueda sin resultados</p>
                </div>
             ) : (
-               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 pb-20 lg:pb-6">
+               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 pb-32 lg:pb-8">
                   {productosFiltrados.map((producto, index) => (
                     <ProductCardBento key={producto.id} producto={producto} onSelect={handleSeleccionarProducto} index={index} />
                   ))}
@@ -186,8 +209,10 @@ export default function VentasPage() {
         </div>
 
         {/* Sidebar Cart */}
-        <aside className="hidden w-80 2xl:w-96 flex-col lg:flex border-l border-border/40 relative bg-background">
-          <CartPremium items={carrito} onEliminarItem={handleEliminarItem} />
+        <aside className="hidden w-80 2xl:w-96 flex-col lg:flex border-l border-border/40 relative bg-background overflow-hidden h-[calc(100vh-80px)]">
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <CartPremium items={carrito} onEliminarItem={handleEliminarItem} />
+          </div>
           
           <div className="p-5 border-t border-border/40 bg-muted/10">
             <Button 

@@ -68,10 +68,10 @@ export function WeightModalPremium({ producto, open, onClose, onAgregar }: Weigh
     };
 
     if (esKg) {
-      item.peso_bruto = parseFloat(pesoBruto);
-      item.tara = parseFloat(tara);
+      item.peso_bruto = parseFloat(pesoBruto) || 0;
+      item.tara = parseFloat(tara) || 0;
     } else {
-      item.cantidad = parseFloat(cantidad);
+      item.cantidad = parseFloat(cantidad) || 0;
     }
 
     onAgregar(item);
@@ -101,75 +101,75 @@ export function WeightModalPremium({ producto, open, onClose, onAgregar }: Weigh
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-[420px] p-0 overflow-hidden border-none bg-background shadow-2xl rounded-3xl">
-        <div className="flex flex-col h-full bg-white dark:bg-[#080b12]">
+        <div className="flex flex-col h-full bg-white dark:bg-card">
           
           <div className="p-5 pb-2">
             <div className="mb-4">
               <DialogHeader className="flex flex-row items-center justify-between space-y-0">
                 <div className="space-y-0.5">
-                  <DialogTitle className="text-xl font-bold tracking-tight uppercase leading-tight">
+                  <DialogTitle className="text-xl font-bold tracking-tight uppercase leading-tight text-foreground">
                     {producto.nombre}
                   </DialogTitle>
-                  <DialogDescription className="text-xs text-muted-foreground">
+                  <DialogDescription className="text-xs text-muted-foreground font-medium">
                     Configura el peso y precio para la venta.
                   </DialogDescription>
                 </div>
-                <Badge variant="secondary" className="font-bold text-xs h-8 px-3">
+                <Badge variant="secondary" className="font-bold text-xs h-8 px-3 bg-muted dark:bg-muted/50 text-foreground border-border/40">
                   Stock: {producto.stock_actual}
                 </Badge>
               </DialogHeader>
 
               <div className="mt-3 flex items-center gap-2">
-                <span className={`text-sm font-medium ${isPriceModified ? 'text-muted-foreground line-through opacity-50' : 'text-primary'}`}>
+                <span className={`text-sm font-bold ${isPriceModified ? 'text-muted-foreground line-through opacity-50' : 'text-primary'}`}>
                   {formatCLPCurrency(producto.precio)}/{unitLabel}
                 </span>
                 {isPriceModified && (
-                  <span className="text-sm font-bold text-amber-600">
+                  <span className="text-sm font-black text-amber-500 dark:text-amber-400">
                     {formatCLPCurrency(precioActual)}/{unitLabel}
                   </span>
                 )}
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 bg-muted/40 p-1.5 rounded-2xl mb-4">
+            <div className="grid grid-cols-3 gap-2 bg-muted/40 dark:bg-muted/10 p-1.5 rounded-2xl mb-4 border border-border/10">
               {esKg ? (
                 <>
                   <button
                     onClick={() => setActiveInput('bruto')}
-                    className={`h-11 rounded-xl text-xs font-bold transition-all ${activeInput === 'bruto' ? 'bg-white shadow-sm text-primary' : 'text-muted-foreground hover:bg-white/50'}`}
+                    className={`h-11 rounded-xl text-xs font-black transition-all ${activeInput === 'bruto' ? 'bg-background shadow-md text-primary dark:text-white dark:bg-primary' : 'text-muted-foreground hover:bg-background/50'}`}
                   >BRUTO</button>
                   <button
                     onClick={() => setActiveInput('tara')}
-                    className={`h-11 rounded-xl text-xs font-bold transition-all ${activeInput === 'tara' ? 'bg-white shadow-sm text-primary' : 'text-muted-foreground hover:bg-white/50'}`}
+                    className={`h-11 rounded-xl text-xs font-black transition-all ${activeInput === 'tara' ? 'bg-background shadow-md text-primary dark:text-white dark:bg-primary' : 'text-muted-foreground hover:bg-background/50'}`}
                   >TARA</button>
                 </>
               ) : (
                 <button
                   onClick={() => setActiveInput('cantidad')}
-                  className={`h-11 rounded-xl text-xs font-bold transition-all ${activeInput === 'cantidad' ? 'bg-white shadow-sm text-primary' : 'text-muted-foreground hover:bg-white/50'}`}
+                  className={`h-11 rounded-xl text-xs font-black transition-all ${activeInput === 'cantidad' ? 'bg-background shadow-md text-primary dark:text-white dark:bg-primary' : 'text-muted-foreground hover:bg-background/50'}`}
                 >CANTIDAD</button>
               )}
               <button
                 onClick={() => setActiveInput('precio')}
-                className={`h-11 rounded-xl text-xs font-bold transition-all ${activeInput === 'precio' ? 'bg-white shadow-sm text-primary' : 'text-muted-foreground hover:bg-white/50'}`}
+                className={`h-11 rounded-xl text-xs font-black transition-all ${activeInput === 'precio' ? 'bg-background shadow-md text-primary dark:text-white dark:bg-primary' : 'text-muted-foreground hover:bg-background/50'}`}
               >PRECIO</button>
             </div>
 
-            <div className="bg-muted p-6 rounded-[2rem] text-center mb-4 min-h-[120px] flex flex-col justify-center border-2 border-primary/5">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 opacity-60">
+            <div className="bg-muted dark:bg-muted/20 p-6 rounded-[2rem] text-center mb-4 min-h-[120px] flex flex-col justify-center border-2 border-primary/10 shadow-inner">
+              <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1 opacity-70">
                 {activeInput === 'precio' ? 'Precio de Venta' : 
-                 activeInput === 'bruto' ? 'Ingresa Peso Bruto' : 
-                 activeInput === 'tara' ? 'Ingresa Tara' : 
-                 'Ingresa Cantidad'}
+                 activeInput === 'bruto' ? 'Peso Bruto' : 
+                 activeInput === 'tara' ? 'Tara' : 
+                 'Cantidad'}
               </p>
-              <div className="text-5xl font-mono font-bold tracking-tighter text-foreground">
-                {activeInput === 'precio' && <span className="text-2xl mr-1 text-muted-foreground">$</span>}
+              <div className="text-5xl font-mono font-black tracking-tighter text-foreground drop-shadow-sm">
+                {activeInput === 'precio' && <span className="text-2xl mr-1 text-muted-foreground/60">$</span>}
                 {getCurrentValue() || '0'}
-                {activeInput !== 'precio' && <span className="text-2xl ml-1 text-muted-foreground">{unitLabel}</span>}
+                {activeInput !== 'precio' && <span className="text-2xl ml-1 text-muted-foreground/60">{unitLabel}</span>}
               </div>
             </div>
 
-            <div className="flex items-center justify-between px-2 text-sm font-bold border-b border-border pb-3 mb-2">
+            <div className="flex items-center justify-between px-2 text-sm font-bold border-b border-border/20 pb-3 mb-2">
               <div className="text-muted-foreground flex gap-1 items-center">
                 Neto: <span className="text-foreground">{neto.toFixed(esKg ? 3 : 0)} {unitLabel}</span>
               </div>

@@ -77,14 +77,14 @@ export default function HistorialPage() {
     <div className="min-h-screen bg-background">
       <AppNav />
 
-      <section className="border-b bg-surface shadow-soft dark:bg-surface-dark">
-        <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex min-h-[72px] flex-col justify-center gap-1 sm:min-h-[84px]">
-            <h1 className="flex items-center gap-2 text-2xl font-bold text-primary sm:text-3xl">
-              <History className="h-6 w-6 shrink-0" />
+      <section className="border-b border-border/40 bg-card/40 backdrop-blur-xl">
+        <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="flex min-h-[72px] flex-col justify-center gap-1.5 sm:min-h-[84px]">
+            <h1 className="flex items-center gap-3 text-2xl font-black text-primary sm:text-3xl tracking-tight">
+              <History className="h-8 w-8 shrink-0" />
               Historial de Ventas
             </h1>
-            <p className="text-sm text-muted-foreground sm:text-base">
+            <p className="text-sm text-muted-foreground font-medium opacity-70">
               Revisa ventas recientes, sesiones de caja y totales acumulados.
             </p>
           </div>
@@ -184,11 +184,11 @@ export default function HistorialPage() {
 
                       <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                            venta.metodo_pago === 'efectivo' ? 'bg-green-100 text-green-700' :
-                            venta.metodo_pago === 'transferencia' ? 'bg-blue-100 text-blue-700' :
-                            venta.metodo_pago === 'tarjeta' ? 'bg-purple-100 text-purple-700' :
-                            'bg-amber-100 text-amber-700'
+                          <span className={`text-[10px] font-black uppercase tracking-[0.1em] px-2.5 py-1 rounded-lg border ${
+                            venta.metodo_pago === 'efectivo' ? 'bg-green-500/10 text-green-600 border-green-500/20' :
+                            venta.metodo_pago === 'transferencia' ? 'bg-blue-500/10 text-blue-600 border-blue-500/20' :
+                            venta.metodo_pago === 'tarjeta' ? 'bg-purple-500/10 text-purple-600 border-purple-500/20' :
+                            'bg-amber-500/10 text-amber-600 border-amber-500/20'
                           }`}>
                             {venta.metodo_pago}
                           </span>

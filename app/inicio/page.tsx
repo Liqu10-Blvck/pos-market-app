@@ -84,7 +84,7 @@ export default function InicioPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] dark:bg-[#020617]">
+    <div className="min-h-screen bg-background">
       <AppNav />
 
       <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -95,22 +95,22 @@ export default function InicioPage() {
               <Zap className="h-4 w-4 fill-primary" />
               <span className="text-xs font-black uppercase tracking-widest">Dashboard General</span>
             </div>
-            <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
+            <h1 className="text-2xl font-black text-foreground sm:text-3xl tracking-tight">
               ¡Hola de nuevo!
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground font-medium">
               Resumen de actividad para tu negocio hoy.
             </p>
           </div>
           
           <div className="flex flex-wrap gap-3">
-             <div className="flex items-center gap-2 rounded-2xl bg-white p-2 pr-4 shadow-sm dark:bg-card">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-500/10 text-green-600">
+             <div className="flex items-center gap-2 rounded-2xl bg-card p-2 pr-4 shadow-sm border border-border/40">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-500/10 text-green-600 dark:text-green-500">
                   <Target className="h-5 w-5" />
                 </div>
                 <div>
-                  <div className="text-[10px] font-bold text-muted-foreground uppercase leading-none">Ventas Hoy</div>
-                  <div className="text-lg font-black leading-tight">
+                  <div className="text-[10px] font-black text-muted-foreground uppercase leading-none opacity-60">Ventas Hoy</div>
+                  <div className="text-lg font-black leading-tight text-foreground">
                     {resumenSesion ? formatCLPCurrency(resumenSesion.total_ventas) : '$0'}
                   </div>
                 </div>
@@ -129,40 +129,40 @@ export default function InicioPage() {
                   key={item.href}
                   onClick={() => router.push(item.href)}
                   disabled={item.disabled}
-                  className={`group relative flex flex-col items-start justify-between rounded-2xl border border-border/60 bg-white p-6 transition-all hover:bg-muted/30 ${item.disabled ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
+                  className={`group relative flex flex-col items-start justify-between rounded-3xl border border-border/40 bg-card p-6 transition-all duration-300 hover:shadow-xl hover:shadow-primary/5 hover:border-primary/20 ${item.disabled ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
                 >
                   <div className="flex w-full items-start justify-between">
-                    <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${item.color.replace('500', '500/10')} ${item.color.replace('bg-', 'text-')}`}>
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${item.color.replace('500', '500/10')} ${item.color.replace('bg-', 'text-')}`}>
                       <item.icon className="h-6 w-6" />
                     </div>
                     {item.badge && (
-                      <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-bold text-primary uppercase">
+                      <span className="rounded-full bg-primary/10 px-3 py-1 text-[9px] font-black text-primary uppercase tracking-wider border border-primary/10">
                         {item.badge}
                       </span>
                     )}
                   </div>
                   
-                  <div className="mt-6 text-left">
-                    <h3 className="text-xl font-bold text-foreground">{item.title}</h3>
-                    <p className="mt-1 text-xs text-muted-foreground">{item.desc}</p>
+                  <div className="mt-8 text-left">
+                    <h3 className="text-xl font-black text-foreground tracking-tight">{item.title}</h3>
+                    <p className="mt-1.5 text-xs text-muted-foreground font-medium leading-relaxed opacity-70">{item.desc}</p>
                   </div>
 
-                  <div className="mt-4 flex h-8 w-8 items-center justify-center rounded-full bg-muted/50 transition-colors group-hover:bg-primary group-hover:text-white">
-                    <ArrowRight className="h-4 w-4" />
+                  <div className="mt-6 flex h-10 w-10 items-center justify-center rounded-xl bg-muted/50 dark:bg-muted/20 text-muted-foreground transition-all duration-300 group-hover:bg-primary group-hover:text-white group-hover:scale-110">
+                    <ArrowRight className="h-5 w-5" />
                   </div>
                 </button>
               ))}
             </div>
 
             {/* Quick Stats Card - MINIMALIST */}
-            <div className="rounded-3xl border border-border/50 bg-white p-8 dark:bg-card">
+            <div className="rounded-[2rem] border border-border/40 bg-card p-8 shadow-sm">
               <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-muted-foreground uppercase opacity-70">Rendimiento de Sesión</h3>
-                  <div className="text-3xl font-bold">
+                <div className="space-y-1.5">
+                  <h3 className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] opacity-60">Rendimiento de Sesión</h3>
+                  <div className="text-4xl font-black tracking-tighter text-foreground">
                     {resumenSesion ? formatCLPCurrency(resumenSesion.total_ventas) : '$0'}
                   </div>
-                  <p className="text-xs text-muted-foreground">Sesión actual de hoy</p>
+                  <p className="text-xs text-muted-foreground font-medium opacity-70">Sesión actual de hoy</p>
                 </div>
                 <div className="flex gap-6 items-center">
                   <div className="text-center">

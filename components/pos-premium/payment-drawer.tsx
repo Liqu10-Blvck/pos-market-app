@@ -72,11 +72,11 @@ export function PaymentDrawer({
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-foreground dark:text-white">{item.nombre}</p>
                     <p className="text-sm text-muted-foreground">
-                      {item.neto.toFixed(3)} {item.unidad} × {formatCLPCurrency(item.precio_unitario)}
+                      {item.unidad === 'kg' ? item.neto.toFixed(3) : item.neto.toFixed(0)} {item.unidad} × {formatCLPCurrency(item.precio_unitario)}
                     </p>
                     {item.unidad === 'kg' && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        Bruto: {item.peso_bruto?.toFixed(3)}kg | Tara: {item.tara?.toFixed(3)}kg
+                        Bruto: {(item.peso_bruto || 0).toFixed(3)}kg | Tara: {(item.tara || 0).toFixed(3)}kg
                       </p>
                     )}
                   </div>

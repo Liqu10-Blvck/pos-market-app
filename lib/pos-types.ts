@@ -3,6 +3,7 @@ export interface Product {
   name: string
   price: number
   unit: "kg" | "unidad"
+  image: string
 }
 
 export interface LineItem {

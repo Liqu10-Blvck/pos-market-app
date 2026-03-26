@@ -4,6 +4,7 @@ import { useState, useMemo } from "react"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -57,6 +58,7 @@ export function CashCountDialog({ open, onOpenChange }: CashCountDialogProps) {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Arqueo de Caja</DialogTitle>
+          <DialogDescription>Cuenta el efectivo en caja</DialogDescription>
         </DialogHeader>
 
         {saved ? (

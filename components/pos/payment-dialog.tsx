@@ -4,6 +4,7 @@ import { useState, useMemo } from "react"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -73,6 +74,7 @@ export function PaymentDialog({ open, onOpenChange, total, onConfirm }: PaymentD
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Cobrar venta</DialogTitle>
+          <DialogDescription>Selecciona el metodo de pago</DialogDescription>
         </DialogHeader>
 
         {completed ? (

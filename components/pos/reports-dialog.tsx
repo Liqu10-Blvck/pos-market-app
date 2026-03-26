@@ -3,6 +3,7 @@
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -49,6 +50,7 @@ export function ReportsDialog({
             <BarChart3 className="size-5" />
             Informes del turno
           </DialogTitle>
+          <DialogDescription>Resumen de ventas del turno actual</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">

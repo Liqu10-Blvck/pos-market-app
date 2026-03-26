@@ -19,15 +19,13 @@ import {
 import type { Product, LineItem, EntryFormData } from "@/lib/pos-types"
 
 const PRODUCTS: Product[] = [
-  { id: "1", name: "Palta Importada", price: 8500, unit: "kg" },
-  { id: "2", name: "Palta Nacional", price: 6500, unit: "kg" },
-  { id: "3", name: "Mango", price: 4500, unit: "kg" },
-  { id: "4", name: "Banano", price: 2800, unit: "kg" },
-  { id: "5", name: "Manzana", price: 3200, unit: "kg" },
-  { id: "6", name: "Naranja", price: 2200, unit: "kg" },
-  { id: "7", name: "Uva", price: 5800, unit: "kg" },
-  { id: "8", name: "Papaya", price: 3800, unit: "kg" },
-  { id: "9", name: "Limon", price: 2500, unit: "kg" },
+  { id: "1", name: "Palta Importada", price: 8500, unit: "kg", image: "/products/palta.jpg" },
+  { id: "2", name: "Palta Nacional", price: 6500, unit: "kg", image: "/products/palta.jpg" },
+  { id: "3", name: "Mango", price: 4500, unit: "kg", image: "/products/mango.jpg" },
+  { id: "4", name: "Banano", price: 2800, unit: "kg", image: "/products/banano.jpg" },
+  { id: "5", name: "Manzana", price: 3200, unit: "kg", image: "/products/manzana.jpg" },
+  { id: "6", name: "Pina", price: 2200, unit: "unidad", image: "/products/pina.jpg" },
+  { id: "7", name: "Tomate", price: 3800, unit: "kg", image: "/products/tomate.jpg" },
 ]
 
 function POSContent() {

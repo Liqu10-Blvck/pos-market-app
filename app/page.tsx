@@ -1,23 +1,38 @@
 "use client"
 
 import { useState, useCallback } from "react"
+import { AuthProvider, useAuth } from "@/lib/auth-context"
+import { LoginScreen } from "@/components/pos/login-screen"
+import { POSSidebar } from "@/components/pos/pos-sidebar"
 import { ProductGrid } from "@/components/pos/product-grid"
 import { EntryForm } from "@/components/pos/entry-form"
 import { TransactionList } from "@/components/pos/transaction-list"
 import { ActionButtons } from "@/components/pos/action-buttons"
-import { TotalDisplay } from "@/components/pos/total-display"
+import { CashCountDialog } from "@/components/pos/cash-count-dialog"
+import { ReportsDialog } from "@/components/pos/reports-dialog"
+import { PaymentDialog } from "@/components/pos/payment-dialog"
+import {
+  SidebarProvider,
+  SidebarInset,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
 import type { Product, LineItem, EntryFormData } from "@/lib/pos-types"
 
 const PRODUCTS: Product[] = [
-  { id: "1", name: "Palta Importada", price: 8500, unit: "kg", emoji: "🥑" },
-  { id: "2", name: "Palta Nacional", price: 6500, unit: "kg", emoji: "🥑" },
-  { id: "3", name: "Mango", price: 4500, unit: "kg", emoji: "🥭" },
-  { id: "4", name: "Banano", price: 2800, unit: "kg", emoji: "🍌" },
-  { id: "5", name: "Manzana", price: 3200, unit: "kg", emoji: "🍎" },
-  { id: "6", name: "Piña", price: 3800, unit: "unidad", emoji: "🍍" },
+  { id: "1", name: "Palta Importada", price: 8500, unit: "kg" },
+  { id: "2", name: "Palta Nacional", price: 6500, unit: "kg" },
+  { id: "3", name: "Mango", price: 4500, unit: "kg" },
+  { id: "4", name: "Banano", price: 2800, unit: "kg" },
+  { id: "5", name: "Manzana", price: 3200, unit: "kg" },
+  { id: "6", name: "Naranja", price: 2200, unit: "kg" },
+  { id: "7", name: "Uva", price: 5800, unit: "kg" },
+  { id: "8", name: "Papaya", price: 3800, unit: "kg" },
+  { id: "9", name: "Limon", price: 2500, unit: "kg" },
 ]
 
-export default function POSPage() {
+function POSContent() {
+  const { isAuthenticated } = useAuth()
+  const [activeView, setActiveView] = useState("pos")
   const [currentTicket, setCurrentTicket] = useState<LineItem[]>([])
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null)
   const [formData, setFormData] = useState<EntryFormData>({
@@ -26,6 +41,12 @@ export default function POSPage() {
     unitPrice: "",
     tare: "0",
   })
+
+  const [cashCountOpen, setCashCountOpen] = useState(false)
+  const [reportsOpen, setReportsOpen] = useState(false)
+  const [paymentOpen, setPaymentOpen] = useState(false)
+  const [completedSales, setCompletedSales] = useState(0)
+  const [completedCount, setCompletedCount] = useState(0)
 
   const grandTotal = currentTicket.reduce((sum, item) => sum + item.total, 0)
 
@@ -73,82 +94,119 @@ export default function POSPage() {
     })
   }, [formData])
 
-  const handleDeleteLine = useCallback(() => {
-    if (!selectedLineId) return
-    setCurrentTicket((prev) => prev.filter((item) => item.id !== selectedLineId))
-    setSelectedLineId(null)
+  const handleDeleteItem = useCallback((id: string) => {
+    setCurrentTicket((prev) => prev.filter((item) => item.id !== id))
+    if (selectedLineId === id) {
+      setSelectedLineId(null)
+    }
   }, [selectedLineId])
 
   const handlePrintReceipt = useCallback(() => {
     if (currentTicket.length === 0) return
-    alert("Imprimiendo vale...")
+    window.print()
   }, [currentTicket])
 
   const handlePayment = useCallback(() => {
     if (currentTicket.length === 0) return
-    alert(`Total a pagar: $${grandTotal.toLocaleString("es-CL")}`)
+    setPaymentOpen(true)
+  }, [currentTicket])
+
+  const handlePaymentConfirm = useCallback(() => {
+    setCompletedSales((prev) => prev + grandTotal)
+    setCompletedCount((prev) => prev + 1)
     setCurrentTicket([])
     setSelectedLineId(null)
-  }, [currentTicket, grandTotal])
+    setFormData({
+      product: null,
+      quantity: "",
+      unitPrice: "",
+      tare: "0",
+    })
+  }, [grandTotal])
 
-  const handleCashCount = useCallback(() => {
-    alert("Abriendo arqueo de caja...")
-  }, [])
-
-  const handleReports = useCallback(() => {
-    alert("Abriendo informes...")
-  }, [])
+  if (!isAuthenticated) {
+    return <LoginScreen />
+  }
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl p-3 lg:p-4">
-        {/* Header */}
-        <header className="mb-4 flex items-center justify-between rounded-xl bg-primary px-4 py-3 text-primary-foreground shadow-md">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🍎</span>
-            <h1 className="text-lg font-bold tracking-tight lg:text-xl">FrutaPOS</h1>
+    <SidebarProvider>
+      <POSSidebar
+        activeView={activeView}
+        onViewChange={setActiveView}
+        onCashCount={() => setCashCountOpen(true)}
+        onReports={() => setReportsOpen(true)}
+      />
+      <SidebarInset>
+        <header className="flex h-14 items-center gap-2 border-b px-4">
+          <SidebarTrigger />
+          <div className="flex-1">
+            <h1 className="text-sm font-semibold">Punto de Venta</h1>
           </div>
-          <TotalDisplay total={grandTotal} />
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">Total turno</p>
+            <p className="text-sm font-semibold tabular-nums">
+              ${completedSales.toLocaleString("es-CL")}
+            </p>
+          </div>
         </header>
 
-        {/* Main Content */}
-        <div className="grid gap-4 lg:grid-cols-12">
-          {/* Left Column - Products & Form */}
-          <div className="flex flex-col gap-4 lg:col-span-7">
-            <ProductGrid
-              products={PRODUCTS}
-              onProductSelect={handleProductSelect}
-              selectedProduct={formData.product}
-            />
-            <EntryForm
-              formData={formData}
-              onFormChange={handleFormChange}
-              onAddProduct={handleAddProduct}
-            />
-          </div>
+        <main className="flex-1 overflow-auto p-4">
+          <div className="mx-auto max-w-6xl">
+            <div className="grid gap-4 lg:grid-cols-12">
+              <div className="flex flex-col gap-4 lg:col-span-7">
+                <ProductGrid
+                  products={PRODUCTS}
+                  onProductSelect={handleProductSelect}
+                  selectedProduct={formData.product}
+                />
+                <EntryForm
+                  formData={formData}
+                  onFormChange={handleFormChange}
+                  onAddProduct={handleAddProduct}
+                />
+              </div>
 
-          {/* Right Column - Transaction List */}
-          <div className="lg:col-span-5">
-            <TransactionList
-              items={currentTicket}
-              selectedId={selectedLineId}
-              onSelectItem={setSelectedLineId}
-              grandTotal={grandTotal}
-            />
+              <div className="flex flex-col gap-4 lg:col-span-5">
+                <TransactionList
+                  items={currentTicket}
+                  selectedId={selectedLineId}
+                  onSelectItem={setSelectedLineId}
+                  onDeleteItem={handleDeleteItem}
+                  grandTotal={grandTotal}
+                />
+                <ActionButtons
+                  onPrint={handlePrintReceipt}
+                  onPay={handlePayment}
+                  hasItems={currentTicket.length > 0}
+                  grandTotal={grandTotal}
+                />
+              </div>
+            </div>
           </div>
-        </div>
+        </main>
+      </SidebarInset>
 
-        {/* Action Buttons */}
-        <ActionButtons
-          onPrint={handlePrintReceipt}
-          onDelete={handleDeleteLine}
-          onPay={handlePayment}
-          onCashCount={handleCashCount}
-          onReports={handleReports}
-          hasSelection={!!selectedLineId}
-          hasItems={currentTicket.length > 0}
-        />
-      </div>
-    </main>
+      <CashCountDialog open={cashCountOpen} onOpenChange={setCashCountOpen} />
+      <ReportsDialog
+        open={reportsOpen}
+        onOpenChange={setReportsOpen}
+        totalSales={completedSales}
+        transactionCount={completedCount}
+      />
+      <PaymentDialog
+        open={paymentOpen}
+        onOpenChange={setPaymentOpen}
+        total={grandTotal}
+        onConfirm={handlePaymentConfirm}
+      />
+    </SidebarProvider>
+  )
+}
+
+export default function POSPage() {
+  return (
+    <AuthProvider>
+      <POSContent />
+    </AuthProvider>
   )
 }

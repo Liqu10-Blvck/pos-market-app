@@ -1,83 +1,92 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import type { LineItem } from "@/lib/pos-types"
 import { cn } from "@/lib/utils"
-import { ShoppingCart } from "lucide-react"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Trash2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface TransactionListProps {
   items: LineItem[]
   selectedId: string | null
   onSelectItem: (id: string | null) => void
+  onDeleteItem: (id: string) => void
   grandTotal: number
 }
 
-export function TransactionList({ items, selectedId, onSelectItem, grandTotal }: TransactionListProps) {
+export function TransactionList({
+  items,
+  selectedId,
+  onSelectItem,
+  onDeleteItem,
+  grandTotal,
+}: TransactionListProps) {
   return (
-    <Card className="flex h-full flex-col">
-      <CardHeader className="flex-none pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <ShoppingCart className="h-5 w-5 text-primary" />
-          <span className="text-card-foreground">Ticket Actual</span>
-          <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
-            {items.length} {items.length === 1 ? "item" : "items"}
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-4 pt-0">
-        <ScrollArea className="flex-1 rounded-lg border bg-muted/30" style={{ minHeight: "200px", maxHeight: "300px" }}>
+    <div className="flex h-full flex-col rounded-lg border bg-card">
+      <div className="flex items-center justify-between border-b px-4 py-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Ticket actual</h2>
+        <span className="text-xs text-muted-foreground">{items.length} item{items.length !== 1 ? "s" : ""}</span>
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="p-2">
           {items.length === 0 ? (
-            <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-muted-foreground">
-              <ShoppingCart className="h-10 w-10 opacity-30" />
-              <p className="text-sm">No hay productos</p>
+            <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
+              Sin productos
             </div>
           ) : (
-            <div className="p-2">
-              {items.map((item) => (
-                <button
+            <div className="space-y-1">
+              {items.map((item, index) => (
+                <div
                   key={item.id}
                   onClick={() => onSelectItem(selectedId === item.id ? null : item.id)}
                   className={cn(
-                    "mb-1 w-full rounded-md p-2 text-left transition-colors last:mb-0",
-                    "hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-primary/20",
+                    "group flex cursor-pointer items-center justify-between rounded-md px-3 py-2 transition-colors",
                     selectedId === item.id
-                      ? "bg-primary/10 ring-2 ring-primary"
-                      : "bg-card"
+                      ? "bg-accent"
+                      : "hover:bg-accent/50"
                   )}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1">
-                        <span className="text-sm">{item.product.emoji}</span>
-                        <span className="truncate text-sm font-medium text-card-foreground">
-                          {item.product.name}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {item.netWeight.toFixed(2)} {item.product.unit} × $
-                        {item.unitPrice.toLocaleString("es-CL")}
-                      </p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xs text-muted-foreground">{index + 1}.</span>
+                      <span className="truncate text-sm font-medium">{item.product.name}</span>
                     </div>
-                    <span className="whitespace-nowrap text-sm font-bold text-primary">
-                      ${item.total.toLocaleString("es-CL")}
-                    </span>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {item.netWeight.toFixed(2)} {item.product.unit} x ${item.unitPrice.toLocaleString("es-CL")}
+                    </div>
                   </div>
-                </button>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium tabular-nums">
+                      ${item.total.toLocaleString("es-CL", { minimumFractionDigits: 0 })}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 opacity-0 transition-opacity group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDeleteItem(item.id)
+                      }}
+                    >
+                      <Trash2 className="size-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
               ))}
             </div>
           )}
-        </ScrollArea>
-
-        <div className="rounded-xl bg-primary p-4 text-primary-foreground">
-          <p className="text-xs font-medium uppercase tracking-wide opacity-80">
-            Total Venta del Turno
-          </p>
-          <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight">
-            ${grandTotal.toLocaleString("es-CL")}
-          </p>
         </div>
-      </CardContent>
-    </Card>
+      </ScrollArea>
+
+      <div className="border-t bg-muted/30 px-4 py-4">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Total</span>
+          <span className="text-2xl font-bold tabular-nums">
+            ${grandTotal.toLocaleString("es-CL", { minimumFractionDigits: 0 })}
+          </span>
+        </div>
+      </div>
+    </div>
   )
 }

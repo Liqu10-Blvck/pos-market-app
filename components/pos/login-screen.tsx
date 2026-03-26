@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { FieldGroup, Field, FieldLabel } from "@/components/ui/field"
 import { LogIn, AlertCircle } from "lucide-react"
+import { BrandLogo } from "@/components/ui/brand-logo"
 
 export function LoginScreen() {
   const { login } = useAuth()
@@ -36,9 +37,11 @@ export function LoginScreen() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-semibold tracking-tight">FrutaPOS</CardTitle>
-          <CardDescription>Sistema de Punto de Venta</CardDescription>
+        <CardHeader className="flex flex-col items-center justify-center pb-6">
+          <BrandLogo className="mb-2" />
+          <p className="text-sm font-medium text-muted-foreground opacity-70">
+            Ingresa para gestionar tu mercado
+          </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit}>

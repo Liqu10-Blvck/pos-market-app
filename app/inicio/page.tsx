@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { ShoppingCart, Package, History, DollarSign, TrendingUp, Users, ArrowRight, Zap, Target } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { BrandLogo } from '@/components/ui/brand-logo';
 
 export default function InicioPage() {
   const [sesionActiva, setSesionActiva] = useState<SesionCaja | null>(null);
@@ -73,9 +74,11 @@ export default function InicioPage() {
 
   if (cargando) {
     return (
-      <div className="flex h-screen w-full flex-col items-center justify-center gap-4 bg-background">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        <p className="text-sm font-bold text-muted-foreground animate-pulse">Sincronizando MarketPOS...</p>
+      <div className="flex h-screen w-full flex-col items-center justify-center gap-6 bg-background">
+        <BrandLogo className="h-20" />
+        <p className="text-sm font-bold text-muted-foreground animate-pulse tracking-widest opacity-60">
+          INICIANDO FRUTAPOS...
+        </p>
       </div>
     );
   }

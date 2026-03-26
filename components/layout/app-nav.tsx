@@ -6,6 +6,7 @@ import { Home, ShoppingCart, Package, History, LogOut, Users } from 'lucide-reac
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/auth-context'
 import { motion } from 'framer-motion'
+import { BrandLogo } from '@/components/ui/brand-logo'
 
 const items = [
   { href: '/inicio', label: 'Inicio', icon: Home },
@@ -29,16 +30,9 @@ export function AppNav() {
     <nav className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-2xl dark:bg-[#080b12]/80">
       <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-6 px-6 py-4">
         {/* Logo/Brand */}
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white">
-            <ShoppingCart className="h-5 w-5" strokeWidth={2} />
-          </div>
-          <div className="hidden min-w-0 sm:block">
-            <h2 className="text-lg font-bold text-foreground">
-              Market<span className="text-primary">POS</span>
-            </h2>
-          </div>
-        </div>
+        <Link href="/inicio">
+          <BrandLogo className="h-10" />
+        </Link>
 
         {/* Navigation Items */}
         <div className="flex-1 overflow-x-auto custom-scrollbar lg:mx-8">

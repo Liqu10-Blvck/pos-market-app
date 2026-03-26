@@ -38,7 +38,7 @@ export function LoginScreen() {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="flex flex-col items-center justify-center pb-6">
-          <BrandLogo className="mb-2" />
+          <BrandLogo className="mb-2" showText={true} />
           <p className="text-sm font-medium text-muted-foreground opacity-70">
             Ingresa para gestionar tu mercado
           </p>

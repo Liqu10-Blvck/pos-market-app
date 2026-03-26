@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 
-export function BrandLogo({ className = "h-12 w-auto", animate = true }: { className?: string; animate?: boolean }) {
+export function BrandLogo({ className = "h-12 w-auto", animate = true, showText = "responsive" }: { className?: string; animate?: boolean; showText?: boolean | "responsive" }) {
   return (
     <motion.div 
       className={`relative flex items-center gap-3 ${className}`}
@@ -75,7 +75,11 @@ export function BrandLogo({ className = "h-12 w-auto", animate = true }: { class
         )}
       </div>
 
-      <div className="flex flex-col">
+      <div className={
+        showText === true ? "flex flex-col" : 
+        showText === false ? "hidden" : 
+        "hidden flex-col sm:flex"
+      }>
         <span className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-green-600 to-emerald-800 tracking-tighter leading-none">
           Fruta<span className="text-orange-500">POS</span>
         </span>

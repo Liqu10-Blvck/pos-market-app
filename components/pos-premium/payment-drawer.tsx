@@ -6,7 +6,7 @@ import { CarritoItem, MetodoPago, Cliente } from '@/lib/types/pos';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { formatCLPCurrency } from '@/lib/utils';
 import { CreditCard, Banknote, UserCircle, CheckCircle2 } from 'lucide-react';
 
@@ -56,9 +56,9 @@ export function PaymentDrawer({
         >
           <SheetHeader className="border-b border-border p-4 pb-4 dark:border-border-dark sm:p-6">
             <SheetTitle className="text-xl font-bold sm:text-2xl">Procesar Venta</SheetTitle>
-            <p className="text-sm text-muted-foreground">
-              {items.length} {items.length === 1 ? 'producto' : 'productos'} en el carrito
-            </p>
+            <SheetDescription className="text-sm text-muted-foreground">
+              {items.length} {items.length === 1 ? 'producto' : 'productos'} en el carrito. Selecciona el método de pago para finalizar.
+            </SheetDescription>
           </SheetHeader>
 
           <div className="flex-1 space-y-5 overflow-y-auto p-4 sm:space-y-6 sm:p-6">

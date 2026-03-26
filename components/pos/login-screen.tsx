@@ -20,12 +20,17 @@ export function LoginScreen() {
     setError("")
     setIsLoading(true)
 
-    const success = await login(email, password)
-    
-    if (!success) {
-      setError("Credenciales incorrectas")
+    try {
+      const success = await login(email, password)
+      
+      if (!success) {
+        setError("Credenciales incorrectas. Verifica tu email y contraseña.")
+      }
+    } catch (err: any) {
+      setError(err.message || "Error al iniciar sesión")
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }
 
   return (
@@ -77,11 +82,20 @@ export function LoginScreen() {
             </Button>
           </form>
 
-          <div className="mt-6 rounded-md border bg-muted/50 p-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Usuarios demo:</p>
-            <div className="space-y-1 text-xs text-muted-foreground">
-              <p>admin@fruta.pos / admin123</p>
-              <p>cajero@fruta.pos / cajero123</p>
+          <div className="mt-6 space-y-3">
+            <div className="text-center">
+              <a 
+                href="/registro" 
+                className="text-sm text-primary hover:underline"
+              >
+                ¿No tienes cuenta? Crear usuario
+              </a>
+            </div>
+            
+            <div className="rounded-md border bg-muted/50 p-3">
+              <p className="mb-2 text-xs font-medium text-muted-foreground">
+                Si aún no has creado un usuario, ve a /registro
+              </p>
             </div>
           </div>
         </CardContent>

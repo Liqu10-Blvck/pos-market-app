@@ -1,0 +1,25 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Imágenes de productos
+    match /productos/{productId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && 
+        request.resource.size < 5 * 1024 * 1024 && // Max 5MB
+        request.resource.contentType.matches('image/.*');
+    }
+    
+    // Tickets/Comprobantes
+    match /tickets/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null &&
+        request.resource.size < 2 * 1024 * 1024; // Max 2MB
+    }
+    
+    // Bloquear todo lo demás
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

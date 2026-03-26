@@ -82,22 +82,6 @@ export function LoginScreen() {
             </Button>
           </form>
 
-          <div className="mt-6 space-y-3">
-            <div className="text-center">
-              <a 
-                href="/registro" 
-                className="text-sm text-primary hover:underline"
-              >
-                ¿No tienes cuenta? Crear usuario
-              </a>
-            </div>
-            
-            <div className="rounded-md border bg-muted/50 p-3">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">
-                Si aún no has creado un usuario, ve a /registro
-              </p>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

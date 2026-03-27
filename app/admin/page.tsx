@@ -13,7 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { formatCLPCurrency, normalizeMoneyInput, parseChileanMoneyInput } from '@/lib/utils';
-import { Plus, Edit, Package, Scale, Hash } from 'lucide-react';
+import Link from 'next/link';
+import { Plus, Edit, Package, Scale, Hash, Truck } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 export default function AdminPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -24,6 +26,9 @@ export default function AdminPage() {
     precio: '',
     unidad: 'kg' as 'kg' | 'unid',
     stock_actual: '',
+    variedades: '',
+    calibres: '',
+    costo_referencia: '',
   });
   const { toast } = useToast();
 
@@ -45,12 +50,23 @@ export default function AdminPage() {
       setFormData({
         nombre: producto.nombre,
         precio: formatCLPCurrency(producto.precio),
-        unidad: producto.unidad,
+        unidad: producto.unidad as 'kg' | 'unid',
         stock_actual: producto.stock_actual.toString(),
+        variedades: (producto.variedades || []).join(', '),
+        calibres: (producto.calibres || []).join(', '),
+        costo_referencia: producto.costo_referencia ? formatCLPCurrency(producto.costo_referencia) : '',
       });
     } else {
       setEditando(null);
-      setFormData({ nombre: '', precio: '', unidad: 'kg', stock_actual: '' });
+      setFormData({ 
+        nombre: '', 
+        precio: '', 
+        unidad: 'kg', 
+        stock_actual: '',
+        variedades: '',
+        calibres: '',
+        costo_referencia: ''
+      });
     }
     setModalOpen(true);
   };
@@ -71,6 +87,9 @@ export default function AdminPage() {
         precio: parseChileanMoneyInput(formData.precio),
         unidad: formData.unidad,
         stock_actual: parseFloat(formData.stock_actual),
+        variedades: formData.variedades.split(',').map(v => v.trim()).filter(v => v !== ''),
+        calibres: formData.calibres.split(',').map(c => c.trim()).filter(c => c !== ''),
+        costo_referencia: formData.costo_referencia ? parseChileanMoneyInput(formData.costo_referencia) : null,
         activo: true,
         updatedAt: Timestamp.now()
       };
@@ -133,32 +152,68 @@ export default function AdminPage() {
               </CardHeader>
               <CardContent>
                 <div className="mb-4 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                    {producto.unidad === 'kg' ? 'Venta por peso' : 'Venta por cantidad'}
+                  <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-black text-primary uppercase tracking-tighter">
+                    {producto.unidad === 'kg' ? 'Venta por peso' : 'Venta por unidad'}
                   </span>
-                  <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
-                    {producto.unidad === 'kg' ? 'kg' : 'unid'}
-                  </span>
+                  {producto.variedades && producto.variedades.length > 0 && (
+                    <span className="rounded-full bg-amber-100 text-amber-700 px-3 py-1 text-[10px] font-black uppercase">
+                      {producto.variedades.length} Variedades
+                    </span>
+                  )}
                 </div>
-                <div className="space-y-3 text-sm sm:text-base">
-                  <div className="flex items-start justify-between gap-3 rounded-xl bg-muted/40 p-3">
-                    <span className="text-muted-foreground">Precio:</span>
-                    <span className="font-semibold text-right">{formatCLPCurrency(producto.precio)}</span>
+
+                <div className="space-y-3 text-sm sm:text-base mb-4">
+                  <div className="flex items-start justify-between gap-3 rounded-xl bg-muted/40 p-3 border border-border/40">
+                    <span className="text-muted-foreground text-xs uppercase font-bold opacity-60">Precio Sugerido</span>
+                    <span className="font-black text-foreground">{formatCLPCurrency(producto.precio)}</span>
                   </div>
-                  <div className="flex items-start justify-between gap-3 rounded-xl bg-muted/40 p-3">
-                    <span className="text-muted-foreground">Tipo de venta:</span>
-                    <span className="font-semibold text-right">{producto.unidad === 'kg' ? 'Por peso' : 'Por cantidad'}</span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3 rounded-xl bg-muted/40 p-3">
-                    <span className="text-muted-foreground">Stock:</span>
-                    <span className={`font-semibold ${
+                  <div className="flex items-start justify-between gap-3 rounded-xl bg-muted/40 p-3 border border-border/40">
+                    <span className="text-muted-foreground text-xs uppercase font-bold opacity-60">Stock Catálogo</span>
+                    <span className={`font-black ${
                       producto.stock_actual < 10 ? 'text-red-500' :
                       producto.stock_actual < 30 ? 'text-yellow-500' :
                       'text-green-500'
-                    } text-right`}>
+                    }`}>
                       {producto.stock_actual} {producto.unidad === 'kg' ? 'kg' : 'unid'}
                     </span>
                   </div>
+                </div>
+
+                {(producto.calibres && producto.calibres.length > 0) && (
+                  <div className="pt-3 border-t border-border/40">
+                    <span className="text-[10px] font-black text-muted-foreground uppercase mb-2 block opacity-40">Calibres Disponibles</span>
+                    <div className="flex flex-wrap gap-1">
+                      {producto.calibres.slice(0, 5).map((c, i) => (
+                        <Badge key={i} variant="outline" className="text-[9px] font-bold py-0 h-4 border-muted-foreground/20">
+                          {c}
+                        </Badge>
+                      ))}
+                      {producto.calibres.length > 5 && <span className="text-[9px] text-muted-foreground font-black">+{producto.calibres.length - 5}</span>}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-6 pt-4 border-t border-border/40 grid grid-cols-2 gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="rounded-xl h-10 font-bold border-primary/20 hover:bg-primary/5 text-primary"
+                    asChild
+                  >
+                    <Link href={`/logistica/ingreso?productoId=${producto.id}`}>
+                      <Truck className="h-4 w-4 mr-2" />
+                      Ingresar
+                    </Link>
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="rounded-xl h-10 font-bold"
+                    onClick={() => handleAbrirModal(producto)}
+                  >
+                    <Edit className="h-4 w-4 mr-2" />
+                    Editar
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -191,34 +246,71 @@ export default function AdminPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="nombre">Nombre del Producto</Label>
-              <Input
-                id="nombre"
-                value={formData.nombre}
-                onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                placeholder="Ej: Tomate"
-              />
+          <div className="space-y-6 py-4">
+            <div className="space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-widest text-primary opacity-60">Datos Básicos</h3>
+              <div className="space-y-2">
+                <Label htmlFor="nombre">Nombre del Producto</Label>
+                <Input
+                  id="nombre"
+                  value={formData.nombre}
+                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                  placeholder="Ej: Palta Hass"
+                  className="rounded-xl h-11"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="precio">Precio de Venta sugerido</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                    <Input
+                      id="precio"
+                      value={formData.precio}
+                      onChange={(e) => setFormData({ ...formData, precio: normalizeMoneyInput(e.target.value) })}
+                      className="pl-7 h-11 rounded-xl font-bold"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="costo">Costo de Referencia</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                    <Input
+                      id="costo"
+                      value={formData.costo_referencia}
+                      onChange={(e) => setFormData({ ...formData, costo_referencia: normalizeMoneyInput(e.target.value) })}
+                      className="pl-7 h-11 rounded-xl"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-6">
-              <div className="space-y-3">
-                <Label htmlFor="precio">Precio de Venta</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                  <Input
-                    id="precio"
-                    type="text"
-                    inputMode="decimal"
-                    value={formData.precio}
-                    onChange={(e) => setFormData({ ...formData, precio: normalizeMoneyInput(e.target.value) })}
-                    onBlur={() => setFormData((current) => ({ ...current, precio: current.precio ? formatCLPCurrency(parseChileanMoneyInput(current.precio)) : '' }))}
-                    onFocus={() => setFormData((current) => ({ ...current, precio: normalizeMoneyInput(current.precio) }))}
-                    className="pl-7 h-11"
-                    placeholder="0"
-                  />
-                </div>
+            <div className="space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-widest text-primary opacity-60">Configuración Mayorista</h3>
+              
+              <div className="space-y-2">
+                <Label htmlFor="variedades">Variedades (Separadas por coma)</Label>
+                <Input
+                  id="variedades"
+                  value={formData.variedades}
+                  onChange={(e) => setFormData({ ...formData, variedades: e.target.value })}
+                  placeholder="Hass, Edranol, Ester..."
+                  className="rounded-xl h-11"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="calibres">Calibres disponibles (Separados por coma)</Label>
+                <Input
+                  id="calibres"
+                  value={formData.calibres}
+                  onChange={(e) => setFormData({ ...formData, calibres: e.target.value })}
+                  placeholder="Extra, 1ra, 18, 20..."
+                  className="rounded-xl h-11"
+                />
               </div>
 
               <div className="space-y-3">
@@ -228,56 +320,44 @@ export default function AdminPage() {
                     type="button"
                     onClick={() => setFormData({ ...formData, unidad: 'kg' })}
                     className={`flex flex-col items-center justify-center gap-2 rounded-2xl border-2 p-4 transition-all ${
-                      formData.unidad === 'kg'
-                        ? 'border-primary bg-primary/5 text-primary shadow-sm ring-2 ring-primary/20'
-                        : 'border-border bg-background hover:border-primary/40'
+                      formData.unidad === 'kg' ? 'border-primary bg-primary/5 text-primary' : 'border-border'
                     }`}
                   >
-                    <Scale className={`h-6 w-6 ${formData.unidad === 'kg' ? 'text-primary' : 'text-muted-foreground'}`} />
-                    <div className="text-center">
-                      <p className="text-sm font-bold">Por Peso</p>
-                      <p className="text-[10px] opacity-70">Kilógramos</p>
-                    </div>
+                    <Scale className="h-6 w-6" />
+                    <span className="text-xs font-bold uppercase">Por Peso</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, unidad: 'unid' })}
                     className={`flex flex-col items-center justify-center gap-2 rounded-2xl border-2 p-4 transition-all ${
-                      formData.unidad === 'unid'
-                        ? 'border-primary bg-primary/5 text-primary shadow-sm ring-2 ring-primary/20'
-                        : 'border-border bg-background hover:border-primary/40'
+                      formData.unidad === 'unid' ? 'border-primary bg-primary/5 text-primary' : 'border-border'
                     }`}
                   >
-                    <Hash className={`h-6 w-6 ${formData.unidad === 'unid' ? 'text-primary' : 'text-muted-foreground'}`} />
-                    <div className="text-center">
-                      <p className="text-sm font-bold">Por Unidad</p>
-                      <p className="text-[10px] opacity-70">Cantidad fija</p>
-                    </div>
+                    <Hash className="h-6 w-6" />
+                    <span className="text-xs font-bold uppercase">Por Unidad</span>
                   </button>
                 </div>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="stock">{formData.unidad === 'kg' ? 'Stock Actual (kg)' : 'Stock Actual (unidades)'}</Label>
+              <Label htmlFor="stock">Stock Actual Inicial</Label>
               <Input
                 id="stock"
                 type="number"
-                step={formData.unidad === 'kg' ? '0.001' : '1'}
-                min="0"
                 value={formData.stock_actual}
                 onChange={(e) => setFormData({ ...formData, stock_actual: e.target.value })}
-                placeholder={formData.unidad === 'kg' ? '0.000' : '0'}
+                className="rounded-xl h-11"
               />
             </div>
           </div>
 
-          <DialogFooter className="flex-col gap-2 sm:flex-row">
-            <Button variant="outline" onClick={() => setModalOpen(false)}>
+          <DialogFooter className="flex-col gap-2 sm:flex-row bg-muted/10 -mx-6 -mb-6 p-6">
+            <Button variant="outline" onClick={() => setModalOpen(false)} className="rounded-xl h-12 flex-1">
               Cancelar
             </Button>
-            <Button onClick={handleGuardar}>
-              {editando ? 'Actualizar' : 'Crear'}
+            <Button onClick={handleGuardar} className="rounded-xl h-12 flex-1 font-bold">
+              {editando ? 'Guardar Cambios' : 'Crear Producto'}
             </Button>
           </DialogFooter>
         </DialogContent>

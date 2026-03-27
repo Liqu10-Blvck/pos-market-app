@@ -4,27 +4,12 @@ import { Delete } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface NumericKeypadProps {
-  value: string;
-  onChange: (value: string) => void;
-  maxDecimals?: number;
+  onKeyClick: (key: string) => void;
+  onDelete: () => void;
+  onClear: () => void;
 }
 
-export function NumericKeypad({ value, onChange, maxDecimals = 3 }: NumericKeypadProps) {
-  const handleNumberClick = (num: string) => {
-    if (num === '.' && value.includes('.')) return;
-    
-    if (value.includes('.')) {
-      const decimals = value.split('.')[1];
-      if (decimals && decimals.length >= maxDecimals) return;
-    }
-    
-    onChange(value + num);
-  };
-
-  const handleDelete = () => {
-    onChange(value.slice(0, -1));
-  };
-
+export function NumericKeypad({ onKeyClick, onDelete, onClear }: NumericKeypadProps) {
   const keys = [
     ['1', '2', '3'],
     ['4', '5', '6'],
@@ -43,7 +28,7 @@ export function NumericKeypad({ value, onChange, maxDecimals = 3 }: NumericKeypa
                   key={`key-${rowIndex}-${keyIndex}`}
                   variant="outline"
                   size="lg"
-                  onClick={handleDelete}
+                  onClick={onDelete}
                   className="h-12 text-lg hover:bg-destructive/10 hover:text-destructive active:scale-95 transition-all text-muted-foreground"
                 >
                   <Delete className="h-5 w-5" />
@@ -56,7 +41,7 @@ export function NumericKeypad({ value, onChange, maxDecimals = 3 }: NumericKeypa
                 key={`key-${rowIndex}-${keyIndex}`}
                 variant="outline"
                 size="lg"
-                onClick={() => handleNumberClick(key)}
+                onClick={() => onKeyClick(key)}
                 className="h-12 text-xl font-medium active:scale-95 transition-all"
               >
                 {key}
@@ -64,6 +49,14 @@ export function NumericKeypad({ value, onChange, maxDecimals = 3 }: NumericKeypa
             );
           })
         ))}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClear}
+          className="col-span-3 h-8 text-[9px] font-black uppercase opacity-40 hover:opacity-100 transition-all tracking-widest mt-1"
+        >
+          Limpiar Campo (C)
+        </Button>
       </div>
     </div>
   );

@@ -32,7 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className={`${geist.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground`}>
+      <body suppressHydrationWarning className={`${geist.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground`}>
         <Providers>
           {children}
           <Analytics />

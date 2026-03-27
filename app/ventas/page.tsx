@@ -99,9 +99,11 @@ export default function VentasPage() {
   const handleAgregarAlCarrito = (itemToScan: ItemVenta) => {
     setCarrito(prev => {
       const existing = prev.find(i => 
-        i.nombre === itemToScan.nombre && 
-        i.unidad === itemToScan.unidad && 
-        i.precio_unitario === itemToScan.precio_unitario
+        i.producto_id === itemToScan.producto_id && 
+        i.precio_unitario === itemToScan.precio_unitario &&
+        i.envase_id === itemToScan.envase_id &&
+        i.calibre === itemToScan.calibre &&
+        i.lote_id === itemToScan.lote_id
       );
       
       if (existing) {
@@ -109,11 +111,12 @@ export default function VentasPage() {
           i.temp_id === existing.temp_id 
             ? { 
                 ...i, 
+                peso_neto: (i.peso_neto || 0) + (itemToScan.peso_neto || 0),
                 neto: i.neto + itemToScan.neto, 
-                total: Math.round(i.total + itemToScan.total),
-                peso_bruto: (i.peso_bruto || 0) + (itemToScan.peso_bruto || 0),
-                tara: (i.tara || 0) + (itemToScan.tara || 0),
-                cantidad: (i.cantidad || 0) + (itemToScan.cantidad || 0)
+                total_fruta: (i.total_fruta || 0) + (itemToScan.total_fruta || 0),
+                total_envases: (i.total_envases || 0) + (itemToScan.total_envases || 0),
+                total: i.total + itemToScan.total,
+                envase_cantidad: (i.envase_cantidad || 0) + (itemToScan.envase_cantidad || 0)
               } 
             : i
         );
@@ -121,7 +124,6 @@ export default function VentasPage() {
       
       return [...prev, { ...itemToScan, temp_id: `${Date.now()}-${Math.random()}` }];
     });
-    toast({ title: 'Agregado', description: `${itemToScan.nombre} al carrito` });
   };
 
   const handleEliminarItem = (tempId: string) => {

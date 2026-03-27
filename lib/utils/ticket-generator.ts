@@ -48,16 +48,28 @@ export class TicketGenerator {
       const nombreLimpio = item.nombre.length > 25 ? item.nombre.substring(0, 22) + '...' : item.nombre;
       ticket += nombreLimpio.toUpperCase() + '\n';
       
-      const netoStr = item.unidad === 'kg' ? item.neto.toFixed(3) : item.neto.toString();
+      const netoStr = item.unidad === 'kg' ? (item.peso_neto || item.neto).toFixed(3) : (item.peso_neto || item.neto).toString();
       const detalleCant = `${netoStr} ${item.unidad} x ${formatCLPCurrency(item.precio_unitario)}`;
-      const subtotal = formatCLPCurrency(item.total);
+      const subtotalFruta = formatCLPCurrency(item.total_fruta || item.total);
       
-      ticket += this.formatearLinea('  ' + detalleCant, subtotal) + '\n';
+      ticket += this.formatearLinea('  ' + detalleCant, subtotalFruta) + '\n';
+
+      if (item.envase_id && item.envase_cantidad) {
+        const detalleEnvase = `  + ${item.envase_cantidad} ${item.envase_nombre?.toUpperCase()}`;
+        const subtotalEnvase = formatCLPCurrency(item.total_envases || 0);
+        ticket += this.formatearLinea(detalleEnvase, subtotalEnvase) + '\n';
+      }
     });
     
     ticket += this.linea('-') + '\n';
     
     // Totals
+    if (venta.total_envases) {
+      ticket += this.formatearLinea('SUBTOTAL FRUTA:', formatCLPCurrency(venta.total_fruta || 0)) + '\n';
+      ticket += this.formatearLinea('SUBTOTAL ENVASES:', formatCLPCurrency(venta.total_envases || 0)) + '\n';
+      ticket += this.linea('.') + '\n';
+    }
+    
     ticket += this.formatearLinea('TOTAL A PAGAR:', formatCLPCurrency(venta.total)) + '\n';
     ticket += this.linea('=') + '\n';
     

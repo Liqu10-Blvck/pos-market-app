@@ -69,13 +69,32 @@ export function BarcodeScannerModal({
         }
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (firstErr) {
+        console.warn('Fallo al obtener cámara trasera con constraints específicos, intentando fallback de video genérico:', firstErr);
+        // Fallback: request any video track (works on desktop laptops/front cameras)
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'user' 
+          } 
+        }).catch(async () => {
+          // Absolute fallback: just video true
+          return await navigator.mediaDevices.getUserMedia({ video: true });
+        });
+      }
+
       streamRef.current = stream;
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.setAttribute('playsinline', 'true');
-        videoRef.current.play();
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          console.error('Error al llamar a video.play():', playErr);
+        }
       }
 
       setCameraPermission('granted');
@@ -272,6 +291,7 @@ export function BarcodeScannerModal({
                         className="w-full h-full object-cover"
                         playsInline
                         muted
+                        autoPlay
                       />
                       
                       {/* Scanning visual overlay */}

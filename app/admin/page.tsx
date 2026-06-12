@@ -266,31 +266,33 @@ function AdminPage() {
 
       if (isNew) {
         console.log('handleGuardar: Creando producto en Firestore...');
-        // 1. Crear documento primero
-        const docRef = await addDoc(collection(db, 'productos'), {
+        // 1. Crear documento primero (sin await para evitar bloqueos por red/persistencia offline)
+        addDoc(collection(db, 'productos'), {
           ...productoData,
           imagen_url: null,
           createdAt: Timestamp.now()
+        }).then((docRef) => {
+          console.log('handleGuardar: Documento creado con éxito. ID:', docRef.id);
+        }).catch((err) => {
+          console.error('Error al guardar producto nuevo en segundo plano:', err);
+          toast({
+            title: 'Error de sincronización',
+            description: 'El producto se guardó localmente pero falló al sincronizar: ' + err.message,
+            variant: 'destructive'
+          });
         });
-        productoId = docRef.id;
-        console.log('handleGuardar: Documento creado. ID asignado:', productoId);
-
-        // 2. Subir imagen si se seleccionó una localmente
-        const newLocalImage = localImages.find(img => img.file !== null);
-        if (newLocalImage && newLocalImage.file) {
-          console.log('handleGuardar: Subiendo imagen para nuevo producto...');
-          const finalImageUrl = await uploadImage(`productos/${productoId}/imagen.jpg`, newLocalImage.file);
-          console.log('handleGuardar: Imagen subida con éxito:', finalImageUrl);
-          await updateDoc(docRef, { imagen_url: finalImageUrl });
-        }
         toast({ title: 'Producto creado' });
       } else {
+        if (!productoId) {
+          throw new Error('ID de producto no encontrado para actualizar.');
+        }
         console.log('handleGuardar: Actualizando producto en Firestore. ID:', productoId);
         const docRef = doc(db, 'productos', productoId);
         
         let finalImageUrl = editando?.imagen_url || '';
+        // 2. Subir imagen para edición (Desactivado de momento a petición del usuario)
+        /*
         const newLocalImage = localImages.find(img => img.file !== null);
-
         if (newLocalImage && newLocalImage.file) {
           console.log('handleGuardar: Subiendo nueva imagen para producto existente...');
           finalImageUrl = await uploadImage(`productos/${productoId}/imagen.jpg`, newLocalImage.file);
@@ -299,10 +301,21 @@ function AdminPage() {
           console.log('handleGuardar: El usuario eliminó la imagen.');
           finalImageUrl = '';
         }
+        */
 
-        await updateDoc(docRef, {
+        // Actualizar documento (sin await para evitar bloqueos por red/persistencia offline)
+        updateDoc(docRef, {
           ...productoData,
           imagen_url: finalImageUrl || null
+        }).then(() => {
+          console.log('handleGuardar: Documento actualizado con éxito.');
+        }).catch((err) => {
+          console.error('Error al actualizar producto en segundo plano:', err);
+          toast({
+            title: 'Error de sincronización',
+            description: 'El producto se actualizó localmente pero falló al sincronizar: ' + err.message,
+            variant: 'destructive'
+          });
         });
         toast({ title: 'Producto actualizado' });
       }

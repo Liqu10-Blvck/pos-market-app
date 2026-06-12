@@ -41,5 +41,11 @@ service cloud.firestore {
       allow update: if isAuthenticated();
       allow delete: if false; // Nunca eliminar sesiones
     }
+    
+    // Costos Diarios: Lectura y escritura para autenticados
+    match /costos_diarios/{costoId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated();
+    }
   }
 }

@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Producto } from '@/lib/types/pos';
-import { AppNav } from '@/components/layout/app-nav';
+import { Producto, UnidadMedida } from '@/lib/types/pos';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,10 +23,8 @@ export default function AdminPage() {
   const [formData, setFormData] = useState({
     nombre: '',
     precio: '',
-    unidad: 'kg' as 'kg' | 'unid',
-    stock_actual: '',
-    variedades: '',
-    calibres: '',
+    unidad: 'kg' as UnidadMedida,
+    unidades_permitidas: ['kg'] as UnidadMedida[],
     costo_referencia: '',
   });
   const { toast } = useToast();
@@ -49,33 +46,29 @@ export default function AdminPage() {
       setEditando(producto);
       setFormData({
         nombre: producto.nombre,
-        precio: formatCLPCurrency(producto.precio),
-        unidad: producto.unidad as 'kg' | 'unid',
-        stock_actual: producto.stock_actual.toString(),
-        variedades: (producto.variedades || []).join(', '),
-        calibres: (producto.calibres || []).join(', '),
-        costo_referencia: producto.costo_referencia ? formatCLPCurrency(producto.costo_referencia) : '',
+        precio: producto.precio.toString(),
+        unidad: producto.unidad,
+        unidades_permitidas: producto.unidades_permitidas || [producto.unidad],
+        costo_referencia: (producto.costo_referencia || 0).toString(),
       });
     } else {
       setEditando(null);
-      setFormData({ 
-        nombre: '', 
-        precio: '', 
-        unidad: 'kg', 
-        stock_actual: '',
-        variedades: '',
-        calibres: '',
-        costo_referencia: ''
+      setFormData({
+        nombre: '',
+        precio: '',
+        unidad: 'kg',
+        unidades_permitidas: ['kg'],
+        costo_referencia: '',
       });
     }
     setModalOpen(true);
   };
 
   const handleGuardar = async () => {
-    if (!formData.nombre || !formData.precio || !formData.stock_actual) {
+    if (!formData.nombre || !formData.precio) {
       toast({
         title: 'Campos incompletos',
-        description: 'Por favor completa todos los campos',
+        description: 'El nombre y precio son obligatorios',
         variant: 'destructive'
       });
       return;
@@ -86,11 +79,10 @@ export default function AdminPage() {
         nombre: formData.nombre,
         precio: parseChileanMoneyInput(formData.precio),
         unidad: formData.unidad,
-        stock_actual: parseFloat(formData.stock_actual),
-        variedades: formData.variedades.split(',').map(v => v.trim()).filter(v => v !== ''),
-        calibres: formData.calibres.split(',').map(c => c.trim()).filter(c => c !== ''),
-        costo_referencia: formData.costo_referencia ? parseChileanMoneyInput(formData.costo_referencia) : null,
+        unidades_permitidas: formData.unidades_permitidas,
+        stock_actual: editando ? editando.stock_actual : 0,
         activo: true,
+        costo_referencia: parseChileanMoneyInput(formData.costo_referencia),
         updatedAt: Timestamp.now()
       };
 
@@ -116,23 +108,27 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppNav />
-      <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-        <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="flex items-center gap-2 text-2xl font-bold sm:text-3xl">
-              <Package className="h-7 w-7 shrink-0 sm:h-8 sm:w-8" />
-              Administración de Productos
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-              Gestiona el inventario y precios
-            </p>
+    <div className="w-full pb-20">
+      <section className="border-b border-border/40 bg-card/40 backdrop-blur-xl -mx-4 -mt-6 sm:-mx-8 sm:-mt-6 mb-8">
+        <div className="w-full px-4 py-6 sm:px-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-black text-primary tracking-tight sm:text-4xl uppercase">PRODUCTOS <span className="text-foreground/20">&</span> CATÁLOGO</h1>
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.3em] mt-1 opacity-70">
+                Maestro de artículos y control de precios masivos
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button onClick={() => setModalOpen(true)} className="h-12 rounded-2xl gap-2 font-bold px-6 shadow-soft">
+                <Plus className="h-5 w-5" /> Nuevo Producto
+              </Button>
+            </div>
           </div>
-          <Button onClick={() => handleAbrirModal()} size="lg" className="w-full sm:w-auto">
-            <Plus className="mr-2 h-5 w-5" />
-            Nuevo Producto
-          </Button>
+        </div>
+      </section>
+
+      <div className="w-full">
+        <div className="mb-8 flex flex-col md:flex-row gap-4">
         </div>
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
@@ -155,11 +151,6 @@ export default function AdminPage() {
                   <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-black text-primary uppercase tracking-tighter">
                     {producto.unidad === 'kg' ? 'Venta por peso' : 'Venta por unidad'}
                   </span>
-                  {producto.variedades && producto.variedades.length > 0 && (
-                    <span className="rounded-full bg-amber-100 text-amber-700 px-3 py-1 text-[10px] font-black uppercase">
-                      {producto.variedades.length} Variedades
-                    </span>
-                  )}
                 </div>
 
                 <div className="space-y-3 text-sm sm:text-base mb-4">
@@ -168,35 +159,35 @@ export default function AdminPage() {
                     <span className="font-black text-foreground">{formatCLPCurrency(producto.precio)}</span>
                   </div>
                   <div className="flex items-start justify-between gap-3 rounded-xl bg-muted/40 p-3 border border-border/40">
-                    <span className="text-muted-foreground text-xs uppercase font-bold opacity-60">Stock Catálogo</span>
-                    <span className={`font-black ${
-                      producto.stock_actual < 10 ? 'text-red-500' :
-                      producto.stock_actual < 30 ? 'text-yellow-500' :
-                      'text-green-500'
-                    }`}>
-                      {producto.stock_actual} {producto.unidad === 'kg' ? 'kg' : 'unid'}
-                    </span>
+                    <span className="text-muted-foreground text-xs uppercase font-bold opacity-60">Stock Total (Lotes)</span>
+                    <div className="text-right flex flex-col items-end">
+                      <span className={`font-black ${
+                        (producto.unidad === 'kg' ? producto.stock_actual : (producto.stock_cajas || 0)) < 10 ? 'text-red-500' :
+                        (producto.unidad === 'kg' ? producto.stock_actual : (producto.stock_cajas || 0)) < 30 ? 'text-yellow-500' :
+                          'text-green-500'
+                      }`}>
+                        {producto.unidad === 'kg'
+                          ? `${producto.stock_actual.toFixed(1)} kg`
+                          : `${producto.stock_cajas || 0} cajas`}
+                      </span>
+                      {producto.unidad === 'kg' && (
+                        <span className="text-[10px] font-bold text-muted-foreground opacity-60">
+                          {producto.stock_cajas || 0} CAJAS
+                        </span>
+                      )}
+                      {producto.unidad !== 'kg' && producto.stock_actual > 0 && (
+                        <span className="text-[10px] font-bold text-muted-foreground opacity-60">
+                          {producto.stock_actual.toFixed(1)} KG
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {(producto.calibres && producto.calibres.length > 0) && (
-                  <div className="pt-3 border-t border-border/40">
-                    <span className="text-[10px] font-black text-muted-foreground uppercase mb-2 block opacity-40">Calibres Disponibles</span>
-                    <div className="flex flex-wrap gap-1">
-                      {producto.calibres.slice(0, 5).map((c, i) => (
-                        <Badge key={i} variant="outline" className="text-[9px] font-bold py-0 h-4 border-muted-foreground/20">
-                          {c}
-                        </Badge>
-                      ))}
-                      {producto.calibres.length > 5 && <span className="text-[9px] text-muted-foreground font-black">+{producto.calibres.length - 5}</span>}
-                    </div>
-                  </div>
-                )}
-
                 <div className="mt-6 pt-4 border-t border-border/40 grid grid-cols-2 gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="rounded-xl h-10 font-bold border-primary/20 hover:bg-primary/5 text-primary"
                     asChild
                   >
@@ -205,9 +196,9 @@ export default function AdminPage() {
                       Ingresar
                     </Link>
                   </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     className="rounded-xl h-10 font-bold"
                     onClick={() => handleAbrirModal(producto)}
                   >
@@ -289,66 +280,63 @@ export default function AdminPage() {
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-xs font-black uppercase tracking-widest text-primary opacity-60">Configuración Mayorista</h3>
-              
-              <div className="space-y-2">
-                <Label htmlFor="variedades">Variedades (Separadas por coma)</Label>
-                <Input
-                  id="variedades"
-                  value={formData.variedades}
-                  onChange={(e) => setFormData({ ...formData, variedades: e.target.value })}
-                  placeholder="Hass, Edranol, Ester..."
-                  className="rounded-xl h-11"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="calibres">Calibres disponibles (Separados por coma)</Label>
-                <Input
-                  id="calibres"
-                  value={formData.calibres}
-                  onChange={(e) => setFormData({ ...formData, calibres: e.target.value })}
-                  placeholder="Extra, 1ra, 18, 20..."
-                  className="rounded-xl h-11"
-                />
-              </div>
+              <h3 className="text-xs font-black uppercase tracking-widest text-primary opacity-60">Configuración de Venta</h3>
 
               <div className="space-y-3">
-                <Label>Tipo de Venta</Label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, unidad: 'kg' })}
-                    className={`flex flex-col items-center justify-center gap-2 rounded-2xl border-2 p-4 transition-all ${
-                      formData.unidad === 'kg' ? 'border-primary bg-primary/5 text-primary' : 'border-border'
-                    }`}
-                  >
-                    <Scale className="h-6 w-6" />
-                    <span className="text-xs font-bold uppercase">Por Peso</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, unidad: 'unid' })}
-                    className={`flex flex-col items-center justify-center gap-2 rounded-2xl border-2 p-4 transition-all ${
-                      formData.unidad === 'unid' ? 'border-primary bg-primary/5 text-primary' : 'border-border'
-                    }`}
-                  >
-                    <Hash className="h-6 w-6" />
-                    <span className="text-xs font-bold uppercase">Por Unidad</span>
-                  </button>
-                </div>
-              </div>
-            </div>
+                <Label>Tipo de Venta (Puedes seleccionar varios)</Label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { id: 'kg', label: 'Por Peso (KG)', icon: Scale },
+                    { id: 'unid', label: 'Por Unidad', icon: Hash },
+                    { id: 'caja', label: 'Por Caja', icon: Package },
+                  ].map((unit) => {
+                    const isSelected = formData.unidades_permitidas.includes(unit.id as UnidadMedida);
+                    const isPrimary = formData.unidad === unit.id;
+                    const Icon = unit.icon;
 
-            <div className="space-y-2">
-              <Label htmlFor="stock">Stock Actual Inicial</Label>
-              <Input
-                id="stock"
-                type="number"
-                value={formData.stock_actual}
-                onChange={(e) => setFormData({ ...formData, stock_actual: e.target.value })}
-                className="rounded-xl h-11"
-              />
+                    return (
+                      <button
+                        key={unit.id}
+                        type="button"
+                        onClick={() => {
+                          let nuevas = [...formData.unidades_permitidas];
+                          if (isSelected) {
+                            if (nuevas.length > 1) {
+                              nuevas = nuevas.filter(u => u !== unit.id);
+                              // Si quitamos la primaria, poner otra como primaria
+                              if (isPrimary) {
+                                setFormData({ ...formData, unidades_permitidas: nuevas, unidad: nuevas[0] });
+                              } else {
+                                setFormData({ ...formData, unidades_permitidas: nuevas });
+                              }
+                            }
+                          } else {
+                            nuevas.push(unit.id as UnidadMedida);
+                            setFormData({ ...formData, unidades_permitidas: nuevas });
+                          }
+                        }}
+                        onDoubleClick={() => {
+                          // Doble click para marcar como principal
+                          if (isSelected) {
+                            setFormData({ ...formData, unidad: unit.id as UnidadMedida });
+                          }
+                        }}
+                        className={`relative flex flex-col items-center justify-center gap-2 rounded-2xl border-2 p-4 transition-all ${isSelected ? 'border-primary bg-primary/5 text-primary' : 'border-border'
+                          } ${isPrimary ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                      >
+                        <Icon className="h-6 w-6" />
+                        <span className="text-[10px] font-black uppercase">{unit.label}</span>
+                        {isPrimary && (
+                          <span className="absolute -top-2 -right-2 bg-primary text-[8px] text-white px-2 py-0.5 rounded-full font-black uppercase">Principal</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2 italic text-center">
+                  * Doble click para marcar una unidad como **Principal** por defecto al ingresar.
+                </p>
+              </div>
             </div>
           </div>
 

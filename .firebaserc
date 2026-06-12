@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "pos-market-app"
+    "default": "pos-market-app",
+    "logistics": "pos-market-logistics"
   }
 }

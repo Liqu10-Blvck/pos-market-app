@@ -11,7 +11,7 @@ function HomePage() {
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
-      router.replace('/inicio')
+      router.replace('/dashboard')
     }
   }, [isAuthenticated, loading, router])
 

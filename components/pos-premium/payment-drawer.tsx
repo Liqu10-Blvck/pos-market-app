@@ -1,14 +1,17 @@
 'use client';
 
-import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { CarritoItem, MetodoPago, Cliente } from '@/lib/types/pos';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Switch } from '@/components/ui/switch';
 import { formatCLPCurrency } from '@/lib/utils';
-import { CreditCard, Banknote, UserCircle, CheckCircle2 } from 'lucide-react';
+import { CreditCard, Banknote, UserCircle, CheckCircle2, FileText, AlertCircle } from 'lucide-react';
 
 interface PaymentDrawerProps {
   open: boolean;
@@ -16,7 +19,7 @@ interface PaymentDrawerProps {
   items: CarritoItem[];
   total: number;
   clientes: Cliente[];
-  onConfirm: (metodoPago: MetodoPago, clienteId?: string) => void;
+  onConfirm: (metodoPago: MetodoPago, clienteId?: string, requiereFactura?: boolean, clienteRut?: string) => void;
   procesando: boolean;
 }
 
@@ -31,22 +34,44 @@ export function PaymentDrawer({
 }: PaymentDrawerProps) {
   const [metodoPago, setMetodoPago] = useState<MetodoPago>('efectivo');
   const [clienteSeleccionado, setClienteSeleccionado] = useState<string>('');
+  const [requiereFactura, setRequiereFactura] = useState(false);
+  const [clienteRut, setClienteRut] = useState('');
+
+  // Reset states when opening
+  useEffect(() => {
+    if (open) {
+      setRequiereFactura(false);
+      setMetodoPago('efectivo');
+      setClienteSeleccionado('');
+      setClienteRut('');
+    }
+  }, [open]);
+
+  // Auto-fill RUT if client changes
+  useEffect(() => {
+    if (clienteSeleccionado) {
+      const cliente = clientes.find(c => c.id === clienteSeleccionado);
+      if (cliente?.rut) {
+        setClienteRut(cliente.rut);
+      }
+    }
+  }, [clienteSeleccionado, clientes]);
 
   const handleConfirm = () => {
-    onConfirm(metodoPago, clienteSeleccionado || undefined);
+    onConfirm(metodoPago, clienteSeleccionado || undefined, requiereFactura, clienteRut || undefined);
   };
 
   const paymentMethods = [
     { value: 'efectivo', label: 'Efectivo', icon: Banknote, color: 'text-green-600' },
     { value: 'transferencia', label: 'Transfer', icon: CreditCard, color: 'text-blue-600' },
     { value: 'tarjeta', label: 'Tarjeta', icon: CreditCard, color: 'text-purple-600' },
-    { value: 'fiado', label: 'Fiado', icon: UserCircle, color: 'text-amber-600' },
+    { value: 'credito', label: 'Credito', icon: UserCircle, color: 'text-amber-600' },
   ];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent 
-        side="bottom" 
+      <SheetContent
+        side="bottom"
         className="h-[88vh] rounded-t-3xl border-t-4 border-primary bg-background p-0 dark:bg-background-dark sm:h-[82vh] sm:max-w-3xl sm:mx-auto"
       >
         <motion.div
@@ -119,15 +144,15 @@ export function PaymentDrawer({
                 {paymentMethods.map((method) => {
                   const Icon = method.icon;
                   const isSelected = metodoPago === method.value;
-                  
+
                   return (
                     <button
                       key={method.value}
                       onClick={() => setMetodoPago(method.value as MetodoPago)}
                       className={`
                         relative rounded-xl border-2 p-4 text-left transition-all
-                        ${isSelected 
-                          ? 'border-primary bg-primary/5 dark:bg-primary/10 shadow-medium' 
+                        ${isSelected
+                          ? 'border-primary bg-primary/5 dark:bg-primary/10 shadow-medium'
                           : 'border-border dark:border-border-dark hover:border-primary/50'
                         }
                       `}
@@ -149,8 +174,48 @@ export function PaymentDrawer({
               </div>
             </div>
 
-            {/* Client Selection for Fiado */}
-            {metodoPago === 'fiado' && (
+            {/* Invoice Toggle */}
+            <div className="flex items-center justify-between p-4 rounded-2xl border border-border bg-muted/20">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  <Label className="text-base font-bold">Requiere Factura</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">La venta se marcará para emitir documento fiscal.</p>
+              </div>
+              <Switch
+                checked={requiereFactura}
+                onCheckedChange={setRequiereFactura}
+                className="data-[state=checked]:bg-primary"
+              />
+            </div>
+
+            {/* RUT Input - Conditional */}
+            <AnimatePresence>
+              {requiereFactura && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="space-y-2 p-4 rounded-2xl bg-primary/5 border border-primary/20"
+                >
+                  <div className="flex items-center gap-2">
+                    <UserCircle className="h-4 w-4 text-primary" />
+                    <Label className="text-sm font-bold uppercase">RUT Receptor (Factura)</Label>
+                  </div>
+                  <Input
+                    placeholder="Ej: 76.123.456-7"
+                    value={clienteRut}
+                    onChange={(e) => setClienteRut(e.target.value)}
+                    className="h-11 border-primary/30 focus:ring-primary/20 bg-background"
+                  />
+                  <p className="text-[10px] text-muted-foreground italic">Ingresa el RUT de la empresa o persona natural.</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Client Selection for credito */}
+            {metodoPago === 'credito' && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -164,24 +229,48 @@ export function PaymentDrawer({
                   <SelectTrigger className="h-12 border-2 text-sm sm:h-14 sm:text-base">
                     <SelectValue placeholder="Elige un cliente" />
                   </SelectTrigger>
-                  <SelectContent>
-                    {clientes.map(cliente => (
-                      <SelectItem key={cliente.id} value={cliente.id} className="py-3 text-sm sm:text-base">
-                        <div className="flex w-full flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                          <span className="font-semibold">{cliente.nombre}</span>
-                          <span className="text-sm text-muted-foreground sm:ml-4">
-                            Deuda: {formatCLPCurrency(cliente.saldo_deuda)}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
+                  <SelectContent className="max-h-[40vh]">
+                    {clientes.map(cliente => {
+                      const deuda = cliente.saldo_pendiente || 0;
+                      const limite = cliente.limite_credito || 0;
+                      const sobregiro = limite > 0 && (deuda + total) > limite;
+
+                      return (
+                        <SelectItem key={cliente.id} value={cliente.id} className="py-3">
+                          <div className="flex w-full flex-col gap-1">
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold text-base">{cliente.nombre}</span>
+                              {sobregiro && <Badge variant="destructive" className="text-[10px] h-4">CRÉDITO INSUFICIENTE</Badge>}
+                            </div>
+                            <div className="flex gap-4 text-[10px] font-black uppercase opacity-60">
+                              <span>Deuda: {formatCLPCurrency(deuda)}</span>
+                              {limite > 0 && <span>Límite: {formatCLPCurrency(limite)}</span>}
+                            </div>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
                 {clienteSeleccionado && (
-                  <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                    <p className="text-sm text-amber-800 dark:text-amber-200">
-                      La deuda del cliente se actualizará automáticamente
-                    </p>
+                  <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 flex gap-3">
+                    <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5" />
+                    <div className="space-y-1 flex-1">
+                      <p className="text-sm font-bold text-amber-900 dark:text-amber-200 uppercase tracking-tight">
+                        Resumen de Crédito
+                      </p>
+                      <div className="flex justify-between items-center text-xs text-amber-700 dark:text-amber-400">
+                        <span>Deuda Anterior:</span>
+                        <span className="font-bold">{formatCLPCurrency(clientes.find(c => c.id === clienteSeleccionado)?.saldo_pendiente || 0)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs text-amber-900 dark:text-amber-100 font-black border-t border-amber-200/50 pt-1 mt-1">
+                        <span>Nueva Deuda Total:</span>
+                        <span>{formatCLPCurrency((clientes.find(c => c.id === clienteSeleccionado)?.saldo_pendiente || 0) + total)}</span>
+                      </div>
+                      <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-2 italic font-medium">
+                        La deuda se actualizará automáticamente al confirmar.
+                      </p>
+                    </div>
                   </div>
                 )}
               </motion.div>
@@ -193,7 +282,7 @@ export function PaymentDrawer({
             <Button
               size="lg"
               onClick={handleConfirm}
-              disabled={procesando || (metodoPago === 'fiado' && !clienteSeleccionado)}
+              disabled={procesando || (metodoPago === 'credito' && !clienteSeleccionado)}
               className="h-14 w-full bg-primary text-base font-bold shadow-hard transition-transform active:scale-95 hover:bg-primary-700 sm:h-16 sm:text-lg"
             >
               {procesando ? (

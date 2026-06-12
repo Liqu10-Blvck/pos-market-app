@@ -64,8 +64,23 @@ export function CartPremium({ items, onEliminarItem }: CartPremiumProps) {
                       </div>
                       <div>
                         <h4 className="flex-1 truncate text-sm font-black text-foreground leading-tight">{item.nombre}</h4>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-[10px] font-bold text-muted-foreground">
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          {item.origen && (
+                            <Badge variant="outline" className={`text-[8px] font-black uppercase px-1.5 py-0 h-4 ${item.origen === 'nacional' ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-blue-500/10 text-blue-600 border-blue-500/20'}`}>
+                              {item.origen === 'nacional' ? '🇨🇱 Nacional' : '✈️ Importado'}
+                            </Badge>
+                          )}
+                          {item.variedad && (
+                            <Badge variant="outline" className="text-[8px] font-black uppercase px-1.5 py-0 h-4 bg-primary/5 text-primary border-primary/20">
+                              {item.variedad}
+                            </Badge>
+                          )}
+                          {item.calibre && (
+                            <Badge variant="outline" className="text-[8px] font-black uppercase px-1.5 py-0 h-4 bg-muted/50 border-border/40">
+                              CAL: {item.calibre}
+                            </Badge>
+                          )}
+                          <span className="text-[10px] font-bold text-muted-foreground ml-0.5">
                             {formatCLPCurrency(item.precio_unitario)} × {item.peso_neto || item.neto} {item.unidad}
                           </span>
                         </div>
@@ -110,9 +125,16 @@ export function CartPremium({ items, onEliminarItem }: CartPremiumProps) {
                         FRUTA: {formatCLPCurrency(item.total_fruta || 0)}
                       </span>
                     ) : (
-                      <span className="text-[9px] text-muted-foreground font-bold bg-muted/30 px-2 py-0.5 rounded-md border border-border/10 uppercase tracking-wider">
-                        NETO: {item.neto} {item.unidad}
-                      </span>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span className="text-[9px] text-muted-foreground font-bold bg-muted/30 px-2 py-0.5 rounded-md border border-border/10 uppercase tracking-wider">
+                          LOG: {item.peso_neto || 0}kg
+                        </span>
+                        {item.cantidad && (
+                          <span className="text-[8px] text-primary/60 font-black uppercase">
+                            {item.cantidad} Bultos
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

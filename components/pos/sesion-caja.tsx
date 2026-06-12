@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { formatCLPCurrency, normalizeMoneyInput, parseChileanMoneyInput } from '@/lib/utils';
 import { DollarSign, Lock, Unlock } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
 
 export function SesionCaja() {
   const [sesionActiva, setSesionActiva] = useState<SesionCaja | null>(null);
@@ -19,15 +20,21 @@ export function SesionCaja() {
   const [montoInicial, setMontoInicial] = useState('');
   const [montoFinal, setMontoFinal] = useState('');
   const [cargando, setCargando] = useState(false);
+  
+  const { user } = useAuth();
   const { toast } = useToast();
+  const tenantId = user?.tenantId || 'default-tenant';
+  const sucursalId = user?.sucursalesIds?.[0] || 'default-sucursal';
 
   useEffect(() => {
-    cargarSesionActiva();
-  }, []);
+    if (user) {
+      cargarSesionActiva();
+    }
+  }, [user]);
 
   const cargarSesionActiva = async () => {
     try {
-      const sesion = await SesionService.obtenerSesionActiva();
+      const sesion = await SesionService.obtenerSesionActiva(tenantId, sucursalId);
       setSesionActiva(sesion);
     } catch (error) {
       console.error('Error al cargar sesión:', error);
@@ -48,7 +55,13 @@ export function SesionCaja() {
 
     setCargando(true);
     try {
-      await SesionService.abrirSesion(monto);
+      await SesionService.abrirSesion(
+        monto, 
+        tenantId, 
+        sucursalId, 
+        user?.id, 
+        user?.name
+      );
       toast({
         title: 'Sesión abierta',
         description: 'Caja abierta exitosamente'

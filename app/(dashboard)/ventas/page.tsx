@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Producto, CarritoItem, ItemVenta, MetodoPago, Cliente } from '@/lib/types/pos';
 import { VentasService } from '@/lib/services/ventas.service';
@@ -13,7 +13,7 @@ import { PaymentDrawer } from '@/components/pos-premium/payment-drawer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { AppNav } from '@/components/layout/app-nav';
+import { useAuth } from '@/lib/auth-context';
 import { formatCLPCurrency } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingCart, DollarSign, Search, Wifi, WifiOff, Package } from 'lucide-react';
@@ -32,19 +32,26 @@ export default function VentasPage() {
   const [productosFiltrados, setProductosFiltrados] = useState<Producto[]>([]);
   const [isOnline, setIsOnline] = useState(true);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   useEffect(() => {
-    const unsubProductos = onSnapshot(collection(db, 'productos'), (snapshot) => {
-      const productosData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Producto[];
-      const activos = productosData.filter((producto) => producto.activo !== false);
-      setProductos(activos);
-      setProductosFiltrados(activos);
-    });
+    const unsubProductos = onSnapshot(
+      query(collection(db, 'productos'), where('tenantId', '==', user?.tenantId || 'default-tenant')), 
+      (snapshot) => {
+        const productosData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Producto[];
+        const activos = productosData.filter((producto) => producto.activo !== false);
+        setProductos(activos);
+        setProductosFiltrados(activos);
+      }
+    );
 
-    const unsubClientes = onSnapshot(collection(db, 'clientes'), (snapshot) => {
-      const clientesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Cliente[];
-      setClientes(clientesData.filter((cliente) => cliente.activo !== false));
-    });
+    const unsubClientes = onSnapshot(
+      query(collection(db, 'clientes'), where('tenantId', '==', user?.tenantId || 'default-tenant')), 
+      (snapshot) => {
+        const clientesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Cliente[];
+        setClientes(clientesData.filter((cliente) => cliente.activo !== false));
+      }
+    );
 
     verificarSesionActiva();
 
@@ -75,7 +82,10 @@ export default function VentasPage() {
 
   const verificarSesionActiva = async () => {
     try {
-      const sesion = await SesionService.obtenerSesionActiva();
+      const sesion = await SesionService.obtenerSesionActiva(
+        user?.tenantId || 'default-tenant',
+        user?.sucursalesIds?.[0] || 'default-sucursal'
+      );
       if (sesion) {
         setSesionActiva(sesion.id);
       } else {
@@ -91,7 +101,8 @@ export default function VentasPage() {
   };
 
   const handleSeleccionarProducto = (producto: Producto) => {
-    if (producto.stock_actual <= 0) return;
+    const stockEfectivo = producto.unidad === 'kg' ? producto.stock_actual : (producto.stock_cajas || producto.stock_actual);
+    if (stockEfectivo <= 0) return;
     setProductoSeleccionado(producto);
     setModalPesajeOpen(true);
   };
@@ -135,13 +146,31 @@ export default function VentasPage() {
     setModalPagoOpen(true);
   };
 
-  const handleProcesarVenta = async (metodoPago: MetodoPago, clienteSeleccionado?: string) => {
+  const handleProcesarVenta = async (
+    metodoPago: MetodoPago, 
+    clienteSeleccionado?: string, 
+    requiereFactura?: boolean,
+    clienteRut?: string
+  ) => {
     if (!sesionActiva) return;
     setProcesando(true);
     try {
       const items: ItemVenta[] = carrito.map(({ temp_id, ...item }) => item);
-      await VentasService.procesarVenta(items, metodoPago, sesionActiva, clienteSeleccionado || undefined);
-      toast({ title: 'Venta exitosa' });
+      await VentasService.procesarVenta(
+        items, 
+        metodoPago, 
+        sesionActiva, 
+        user?.tenantId || 'default-tenant',
+        user?.sucursalesIds?.[0] || 'default-sucursal',
+        user?.id || 'unknown',
+        clienteSeleccionado || undefined, 
+        requiereFactura,
+        clienteRut
+      );
+      toast({ 
+        title: 'Venta exitosa', 
+        description: requiereFactura ? 'La venta ha sido registrada para facturar.' : undefined 
+      });
       setCarrito([]);
       setModalPagoOpen(false);
     } catch (error: any) {
@@ -154,19 +183,16 @@ export default function VentasPage() {
   const totalCarrito = carrito.reduce((sum, item) => sum + item.total, 0);
 
   return (
-    <div className="flex h-screen w-full flex-col bg-background overflow-hidden selection:bg-primary/10">
-      <AppNav />
-
-      <div className="flex flex-1 overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden selection:bg-primary/10">
         {/* Workspace */}
         <div className="flex flex-1 flex-col overflow-hidden">
           <header className="px-6 py-4 border-b border-border/40 bg-muted/5">
             <div className="flex items-center justify-between mb-4">
                <div>
-                  <h1 className="text-xl font-bold flex items-center gap-2">
-                    Catálogo de Productos
-                    <Badge variant="outline" className="text-[10px] font-bold py-0 h-4">{productosFiltrados.length}</Badge>
-                  </h1>
+                <h1 className="text-xl font-black flex items-center gap-2 text-foreground tracking-tight italic">
+                  CATÁLOGO <span className="text-primary tracking-tighter">V2</span>
+                  <Badge variant="outline" className="text-[10px] font-black py-0 h-4 border-primary/20 text-primary">{productosFiltrados.length}</Badge>
+                </h1>
                   <div className="flex items-center gap-2 mt-0.5">
                     <div className={`h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-success' : 'bg-destructive'}`} />
                     <span className="text-[10px] font-bold text-muted-foreground uppercase opacity-60 tracking-wider">
@@ -182,14 +208,14 @@ export default function VentasPage() {
                )}
             </div>
 
-            <div className="relative max-w-xl">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <div className="relative max-w-xl group">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
               <Input
                 type="search"
-                placeholder="Buscar por nombre..."
+                placeholder="Buscar productos o categorías..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-9 pl-10 border-border/40 bg-background text-sm rounded-xl focus:ring-0"
+                className="h-10 pl-10 border-border/50 bg-background/50 text-sm rounded-xl focus-visible:ring-1 focus-visible:ring-primary/30 transition-all"
               />
             </div>
           </header>
@@ -211,7 +237,7 @@ export default function VentasPage() {
         </div>
 
         {/* Sidebar Cart */}
-        <aside className="hidden w-80 2xl:w-96 flex-col lg:flex border-l border-border/40 relative bg-background overflow-hidden h-[calc(100vh-80px)]">
+        <aside className="hidden w-80 2xl:w-96 flex-col lg:flex border-l border-border/50 relative bg-muted/[0.03] overflow-hidden h-full">
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <CartPremium items={carrito} onEliminarItem={handleEliminarItem} />
           </div>
@@ -233,7 +259,6 @@ export default function VentasPage() {
             </Button>
           </div>
         </aside>
-      </div>
 
       {/* Mobile Bar */}
       <div className="fixed bottom-0 left-0 right-0 p-4 lg:hidden bg-background border-t border-border/60 shadow-lg">

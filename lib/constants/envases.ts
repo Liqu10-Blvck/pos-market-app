@@ -25,6 +25,14 @@ export const TIPOS_ENVASES: TipoEnvase[] = [
     precio_venta: 3000,
     activo: true,
     peso_referencia: 1.6
+  },
+  {
+    id: 'caja_carton',
+    nombre: 'Caja de Cartón',
+    precio_costo: 0,
+    precio_venta: 0,
+    activo: true,
+    peso_referencia: 0
   }
 ];
 

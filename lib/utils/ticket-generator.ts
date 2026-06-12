@@ -78,7 +78,7 @@ export class TicketGenerator {
       efectivo: 'EFECTIVO',
       transferencia: 'TRANSFERENCIA',
       tarjeta: 'TARJETA DEBITO/CREDITO',
-      fiado: 'CREDITO LOCAL'
+      credito: 'CREDITO LOCAL'
     }[venta.metodo_pago] || venta.metodo_pago.toUpperCase();
     
     ticket += this.centrar(`MÉTODO DE PAGO: ${metodoPagoTexto}`) + '\n';

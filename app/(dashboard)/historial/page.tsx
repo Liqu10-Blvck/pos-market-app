@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, getDocs, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, where, Timestamp, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useAuth } from '@/lib/auth-context';
 import { Venta, SesionCaja } from '@/lib/types/pos';
-import { AppNav } from '@/components/layout/app-nav';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -18,32 +18,42 @@ export default function HistorialPage() {
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [sesiones, setSesiones] = useState<SesionCaja[]>([]);
   const [cargando, setCargando] = useState(true);
+  const { user } = useAuth();
 
   useEffect(() => {
-    cargarDatos();
-  }, []);
+    if (user?.tenantId) {
+      cargarDatos();
+    }
+  }, [user?.tenantId, user?.sucursalesIds?.[0]]);
 
   const cargarDatos = async () => {
+    if (!user?.tenantId) return;
+    
     try {
-      const ventasSnapshot = await getDocs(collection(db, 'ventas'));
-      const ventasData = ventasSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Venta[];
-      const ventasOrdenadas = ventasData
-        .sort((a, b) => b.fecha.toMillis() - a.fecha.toMillis())
-        .slice(0, 50);
-      setVentas(ventasOrdenadas);
+      const tenantId = user.tenantId;
+      const sucursalId = user.sucursalesIds?.[0] || 'default-sucursal';
 
-      const sesionesSnapshot = await getDocs(collection(db, 'sesiones_caja'));
-      const sesionesData = sesionesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as SesionCaja[];
-      const sesionesOrdenadas = sesionesData
-        .sort((a, b) => b.fecha_apertura.toMillis() - a.fecha_apertura.toMillis())
-        .slice(0, 10);
-      setSesiones(sesionesOrdenadas);
+      // Ventas (Simplified query skip index)
+      const qVentas = query(
+        collection(db, 'ventas'),
+        where('tenantId', '==', tenantId),
+        where('sucursalId', '==', sucursalId),
+        limit(100)
+      );
+      const ventasSnapshot = await getDocs(qVentas);
+      const ventasData = ventasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Venta[];
+      setVentas(ventasData.sort((a, b) => b.fecha.toMillis() - a.fecha.toMillis()).slice(0, 50));
+
+      // Sesiones (Simplified query skip index)
+      const qSesiones = query(
+        collection(db, 'sesiones_caja'),
+        where('tenantId', '==', tenantId),
+        where('sucursalId', '==', sucursalId),
+        limit(50)
+      );
+      const sesionesSnapshot = await getDocs(qSesiones);
+      const sesionesData = sesionesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as SesionCaja[];
+      setSesiones(sesionesData.sort((a, b) => b.fecha_apertura.toMillis() - a.fecha_apertura.toMillis()).slice(0, 20));
 
     } catch (error) {
       console.error('Error al cargar datos:', error);
@@ -74,9 +84,7 @@ export default function HistorialPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppNav />
-
+    <div className="pb-20">
       <section className="border-b border-border/40 bg-card/40 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <div className="flex min-h-[72px] flex-col justify-center gap-1.5 sm:min-h-[84px]">
@@ -184,13 +192,12 @@ export default function HistorialPage() {
 
                       <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className={`text-[10px] font-black uppercase tracking-[0.1em] px-2.5 py-1 rounded-lg border ${
-                            venta.metodo_pago === 'efectivo' ? 'bg-green-500/10 text-green-600 border-green-500/20' :
-                            venta.metodo_pago === 'transferencia' ? 'bg-blue-500/10 text-blue-600 border-blue-500/20' :
-                            venta.metodo_pago === 'tarjeta' ? 'bg-purple-500/10 text-purple-600 border-purple-500/20' :
-                            'bg-amber-500/10 text-amber-600 border-amber-500/20'
-                          }`}>
-                            {venta.metodo_pago}
+                          <span className={`text-[10px] font-black uppercase tracking-[0.1em] px-2.5 py-1 rounded-lg border ${venta.metodo_pago === 'efectivo' ? 'bg-green-500/10 text-green-600 border-green-500/20' :
+                              venta.metodo_pago === 'transferencia' ? 'bg-blue-500/10 text-blue-600 border-blue-500/20' :
+                                venta.metodo_pago === 'tarjeta' ? 'bg-purple-500/10 text-purple-600 border-purple-500/20' :
+                                  'bg-amber-500/10 text-amber-600 border-amber-500/20'
+                            }`}>
+                            {venta.metodo_pago === 'credito' ? 'CRÉDITO' : venta.metodo_pago}
                           </span>
                           {venta.cliente_nombre && (
                             <span className="text-xs text-muted-foreground">
@@ -238,9 +245,8 @@ export default function HistorialPage() {
                             {sesion.fecha_cierre && ` - ${format(sesion.fecha_cierre.toDate(), 'HH:mm', { locale: es })}`}
                           </p>
                         </div>
-                        <span className={`w-fit text-xs px-2 py-1 rounded-full ${
-                          sesion.cerrada ? 'bg-gray-100 text-gray-800' : 'bg-green-100 text-green-800'
-                        }`}>
+                        <span className={`w-fit text-xs px-2 py-1 rounded-full ${sesion.cerrada ? 'bg-gray-100 text-gray-800' : 'bg-green-100 text-green-800'
+                          }`}>
                           {sesion.cerrada ? 'Cerrada' : 'Activa'}
                         </span>
                       </div>
@@ -268,8 +274,8 @@ export default function HistorialPage() {
                             <span className="text-right">{formatCLPCurrency(sesion.total_tarjeta || 0)}</span>
                           </div>
                           <div className="flex items-start justify-between gap-3">
-                            <span className="text-muted-foreground">Fiado:</span>
-                            <span className="text-right">{formatCLPCurrency(sesion.total_fiado || 0)}</span>
+                            <span className="text-muted-foreground">Crédito:</span>
+                            <span className="text-right">{formatCLPCurrency(sesion.total_credito || 0)}</span>
                           </div>
                           <div className="flex items-start justify-between gap-3 border-t pt-2 font-semibold">
                             <span>Diferencia:</span>

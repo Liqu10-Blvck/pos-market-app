@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/lib/auth-context';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,14 +20,17 @@ export function ModalPesaje({ producto, open, onClose, onAgregar }: ModalPesajeP
   const [pesoBruto, setPesoBruto] = useState('');
   const [tara, setTara] = useState('');
   const [cantidad, setCantidad] = useState('1');
+  const [precioManual, setPrecioManual] = useState<string>('');
+  const { user } = useAuth();
 
   useEffect(() => {
-    if (open) {
+    if (open && producto) {
       setPesoBruto('');
       setTara('');
       setCantidad('1');
+      setPrecioManual(producto.precio.toString());
     }
-  }, [open]);
+  }, [open, producto]);
 
   if (!producto) return null;
 
@@ -42,7 +46,11 @@ export function ModalPesaje({ producto, open, onClose, onAgregar }: ModalPesajeP
   };
 
   const neto = calcularNeto();
-  const total = VentasService.calcularTotal(neto, producto.precio);
+  const precioAplicado = parseFloat(precioManual) || producto.precio;
+  const total = VentasService.calcularTotal(neto, precioAplicado);
+
+  const isAdmin = user?.role === 'admin';
+  const precioBloqueado = producto.precio_bloqueado && !isAdmin;
 
   const handleAgregar = () => {
     if (neto <= 0) {
@@ -58,9 +66,12 @@ export function ModalPesaje({ producto, open, onClose, onAgregar }: ModalPesajeP
     const item: ItemVenta = {
       producto_id: producto.id,
       nombre: producto.nombre,
-      precio_unitario: producto.precio,
+      precio_unitario: precioAplicado,
       unidad: producto.unidad,
+      peso_neto: neto,
       neto,
+      total_fruta: total,
+      total_envases: 0,
       total
     };
 
@@ -148,11 +159,22 @@ export function ModalPesaje({ producto, open, onClose, onAgregar }: ModalPesajeP
             </div>
           )}
 
-          <div className="bg-green-100 dark:bg-green-900/30 p-4 rounded-lg border-2 border-green-500">
+          <div className="space-y-4 p-4 bg-zinc-50 dark:bg-neutral-900/50 rounded-2xl border-2 border-zinc-100 dark:border-neutral-800">
             <div className="flex justify-between items-center">
-              <span className="text-lg font-semibold">TOTAL:</span>
-              <span className="text-3xl font-bold text-green-700 dark:text-green-400">
-                ${total.toFixed(2)}
+              <Label className="text-[10px] font-black uppercase opacity-60">Precio Unitario ($)</Label>
+              <Input
+                type="number"
+                value={precioManual}
+                onChange={(e) => setPrecioManual(e.target.value)}
+                disabled={precioBloqueado}
+                className={`w-32 h-10 text-right font-black rounded-xl border-2 ${precioBloqueado ? 'bg-zinc-100 border-zinc-200 opacity-50' : 'border-primary/20 focus:border-primary'}`}
+              />
+            </div>
+            
+            <div className="flex justify-between items-center py-2 border-t-2 border-zinc-100 dark:border-neutral-800/50">
+              <span className="text-lg font-black uppercase tracking-tight">TOTAL VENTA:</span>
+              <span className="text-3xl font-black text-primary">
+                ${total.toLocaleString('es-CL')}
               </span>
             </div>
           </div>

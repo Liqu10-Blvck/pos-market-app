@@ -67,7 +67,7 @@ export default function SeedPage() {
       agregarLog('✅ ¡Datos cargados exitosamente!');
       agregarLog('');
       agregarLog('📋 Próximos pasos:');
-      agregarLog('1. Ve a /inicio para gestionar la caja');
+      agregarLog('1. Ve a /dashboard para gestionar la caja');
       agregarLog('2. Abre una sesión de caja');
       agregarLog('3. Ve a /ventas para comenzar a vender');
 

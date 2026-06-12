@@ -12,12 +12,19 @@ import {
 import { db } from '../firebase';
 import { SesionCaja } from '../types/pos';
 import { VentasService } from './ventas.service';
+import { sanitizeFirestoreData } from '../utils';
 
 export class SesionService {
   private static readonly COLLECTION = 'sesiones_caja';
 
-  static async abrirSesion(montoInicial: number, vendedorId?: string, vendedorNombre?: string): Promise<string> {
-    const sesionActiva = await this.obtenerSesionActiva();
+  static async abrirSesion(
+    montoInicial: number, 
+    tenantId: string,
+    sucursalId: string,
+    vendedorId?: string, 
+    vendedorNombre?: string
+  ): Promise<string> {
+    const sesionActiva = await this.obtenerSesionActiva(tenantId, sucursalId);
     
     if (sesionActiva) {
       throw new Error('Ya existe una sesión activa. Debe cerrarla antes de abrir una nueva.');
@@ -25,19 +32,17 @@ export class SesionService {
 
     const sesionRef = doc(collection(db, this.COLLECTION));
 
-    const sesionDataBase: Omit<SesionCaja, 'id'> = {
+    const sesionData: Omit<SesionCaja, 'id'> = {
+      tenantId,
+      sucursalId,
       fecha_apertura: Timestamp.now(),
       monto_inicial: montoInicial,
-      cerrada: false
-    };
-
-    const sesionData: Omit<SesionCaja, 'id'> = {
-      ...sesionDataBase,
+      cerrada: false,
       ...(vendedorId ? { vendedor_id: vendedorId } : {}),
       ...(vendedorNombre ? { vendedor_nombre: vendedorNombre } : {})
     };
 
-    await setDoc(sesionRef, sesionData);
+    await setDoc(sesionRef, sanitizeFirestoreData(sesionData));
     return sesionRef.id;
   }
 
@@ -59,7 +64,7 @@ export class SesionService {
       throw new Error('La sesión ya está cerrada');
     }
 
-    const resumen = await VentasService.obtenerResumenSesion(sesionId);
+    const resumen = await VentasService.obtenerResumenSesion(sesionId, sesion.tenantId, sesion.sucursalId);
     const montoFinalEsperado = sesion.monto_inicial + resumen.total_efectivo;
     const diferencia = montoFinalReal - montoFinalEsperado;
 
@@ -73,7 +78,7 @@ export class SesionService {
       total_efectivo: resumen.total_efectivo,
       total_transferencia: resumen.total_transferencia,
       total_tarjeta: resumen.total_tarjeta,
-      total_fiado: resumen.total_fiado,
+      total_credito: resumen.total_credito,
       cantidad_ventas: resumen.cantidad_ventas
     });
 
@@ -87,9 +92,11 @@ export class SesionService {
     }
   }
 
-  static async obtenerSesionActiva(): Promise<SesionCaja | null> {
+  static async obtenerSesionActiva(tenantId: string, sucursalId: string): Promise<SesionCaja | null> {
     const q = query(
       collection(db, this.COLLECTION),
+      where('tenantId', '==', tenantId),
+      where('sucursalId', '==', sucursalId),
       where('cerrada', '==', false)
     );
 

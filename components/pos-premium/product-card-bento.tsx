@@ -15,8 +15,9 @@ interface ProductCardBentoProps {
 import { getProductAsset } from '@/lib/constants/product-assets';
 
 export function ProductCardBento({ producto, onSelect, index }: ProductCardBentoProps) {
-  const isLowStock = producto.stock_actual < 10;
-  const isOutOfStock = producto.stock_actual <= 0;
+  const stockValue = producto.unidad === 'kg' ? producto.stock_actual : (producto.stock_cajas || producto.stock_actual);
+  const isOutOfStock = stockValue <= 0;
+  const isLowStock = stockValue < 10 && !isOutOfStock;
   const asset = getProductAsset(producto.nombre);
 
   return (
@@ -71,12 +72,14 @@ export function ProductCardBento({ producto, onSelect, index }: ProductCardBento
             {formatCLPCurrency(producto.precio)}
           </span>
         </div>
-        <div className="text-right">
+        <div className="text-right flex flex-col items-end">
           <span className="text-sm font-black block leading-none text-foreground">
-            {producto.stock_actual}
+            {producto.unidad === 'kg'
+              ? producto.stock_actual.toFixed(1)
+              : (producto.stock_cajas || producto.stock_actual)}
           </span>
           <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tighter">
-            Disponibles
+            {producto.unidad === 'kg' ? 'Kilos' : 'Cajas'} Disp.
           </span>
         </div>
       </div>

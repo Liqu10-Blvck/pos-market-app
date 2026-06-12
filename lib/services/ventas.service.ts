@@ -8,10 +8,12 @@ import {
   getDocs,
   orderBy,
   limit,
-  increment
+  increment,
+  updateDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Venta, ItemVenta, Producto, Cliente, MetodoPago } from '../types/pos';
+import { sanitizeFirestoreData } from '../utils';
 
 export class VentasService {
   private static readonly COLLECTION = 'ventas';
@@ -22,19 +24,36 @@ export class VentasService {
     items: ItemVenta[],
     metodoPago: MetodoPago,
     sesionId: string,
-    clienteId?: string
+    tenantId: string,
+    sucursalId: string,
+    vendedorId: string,
+    clienteId?: string,
+    requiereFactura?: boolean,
+    clienteRut?: string
   ): Promise<string> {
     if (items.length === 0) {
       throw new Error('No hay items en la venta');
     }
 
-    if (metodoPago === 'fiado' && !clienteId) {
-      throw new Error('Debe seleccionar un cliente para ventas fiadas');
+    if (metodoPago === 'credito' && !clienteId) {
+      throw new Error('Debe seleccionar un cliente para ventas a crédito');
     }
 
     const total_fruta = items.reduce((sum, item) => sum + (item.total_fruta || 0), 0);
     const total_envases = items.reduce((sum, item) => sum + (item.total_envases || 0), 0);
     const total_general = total_fruta + total_envases;
+
+    // OPTIMIZED sale number calculation (Simplified query skip index)
+    const q = query(
+      collection(db, this.COLLECTION), 
+      where('tenantId', '==', tenantId),
+      where('sucursalId', '==', sucursalId),
+      limit(20) // Fetch some to find max in memory
+    );
+    const lastVentaSnap = await getDocs(q);
+    const ventasRecientes = lastVentaSnap.docs.map(d => d.data().numero_venta || 0);
+    const ultimoNumeroVenta = ventasRecientes.length > 0 ? Math.max(...ventasRecientes) : 0;
+    const numeroVenta = ultimoNumeroVenta + 1;
 
     return await runTransaction(db, async (transaction) => {
       // 1. ALL READS FIRST
@@ -49,19 +68,21 @@ export class VentasService {
       ]);
       
       let clienteSnap;
-      if (metodoPago === 'fiado' && clienteId) {
+      if (clienteId) {
         clienteSnap = await transaction.get(doc(db, this.CLIENTES_COLLECTION, clienteId));
       }
 
-      // OPTIMIZED sale number calculation
-      const q = query(
-        collection(db, this.COLLECTION), 
-        orderBy('numero_venta', 'desc'), 
-        limit(1)
-      );
-      const lastVentaSnap = await getDocs(q);
-      const ultimoNumeroVenta = lastVentaSnap.empty ? 0 : (lastVentaSnap.docs[0].data().numero_venta || 0);
-      const numeroVenta = ultimoNumeroVenta + 1;
+      // POS-TRANSACTION Validation (Credit Limit)
+      if (metodoPago === 'credito' && clienteSnap?.exists()) {
+        const cliente = clienteSnap.data() as Cliente;
+        const deudaActual = cliente.saldo_pendiente || 0;
+        const limite = cliente.limite_credito || 0;
+        
+        if (limite > 0 && (deudaActual + total_general) > limite) {
+          throw new Error(`Crédito insuficiente. Límite: $${limite.toLocaleString()}. Deuda actual: $${deudaActual.toLocaleString()}`);
+        }
+      }
+
 
       // 2. ALL WRITES AFTER
       for (let i = 0; i < items.length; i++) {
@@ -75,19 +96,31 @@ export class VentasService {
         const producto = prodSnap.data() as Producto;
         const descuentoPeso = item.peso_neto || item.neto;
         
+        // Determinar cuántas cajas/bultos descontar
+        // Si se vendió por caja/unid, el 'neto' son los bultos. 
+        // Si se vendió por peso, usamos 'envase_cantidad'.
+        const bultosADescontar = (item.unidad === 'caja' || item.unidad === 'unid') 
+          ? (item.neto || 0) 
+          : (item.envase_cantidad || 0);
+        
         // Update General Product Stock
         transaction.update(itemRefs[i], {
           stock_actual: increment(-descuentoPeso),
+          stock_cajas: increment(-bultosADescontar),
           updatedAt: Timestamp.now()
         });
 
         // Update Specific Lot Stock
         if (loteRefs[i] && loteSnap?.exists()) {
           const loteActual = loteSnap.data();
-          const nuevoStockLote = loteActual.stock_actual_kg - descuentoPeso;
+          const nuevoStockLote = loteActual.stock_actual_kg - (descuentoPeso || 0);
+          const stockCajasActual = loteActual.stock_actual_cajas ?? loteActual.envase_cantidad_total;
+          const nuevoStockCajas = stockCajasActual - bultosADescontar;
+          
           transaction.update(loteRefs[i]!, {
-            stock_actual_kg: nuevoStockLote,
-            estado: nuevoStockLote <= 0 ? 'agotado' : (loteActual.estado || 'disponible')
+            stock_actual_kg: Math.max(0, nuevoStockLote),
+            stock_actual_cajas: Math.max(0, nuevoStockCajas),
+            estado: (nuevoStockLote <= 0 && nuevoStockCajas <= 0) ? 'agotado' : (loteActual.estado || 'disponible')
           });
         }
 
@@ -100,45 +133,57 @@ export class VentasService {
         }
       }
 
-      let clienteNombre: string | undefined;
-      if (metodoPago === 'fiado' && clienteId && clienteSnap) {
-        if (!clienteSnap.exists()) {
-          throw new Error('Cliente no encontrado');
+      let clienteNombre: string = 'Cliente Genérico';
+      // 3. Update Customer Balance (Debt)
+      if (clienteId) {
+        const clienteRef = doc(db, this.CLIENTES_COLLECTION, clienteId);
+
+        if (clienteSnap?.exists()) {
+           const clienteData = clienteSnap.data() as Cliente;
+           clienteNombre = clienteData.nombre;
         }
 
-        const cliente = clienteSnap.data() as Cliente;
-        clienteNombre = cliente.nombre;
-        
-        transaction.update(clienteSnap.ref, {
-          saldo_deuda: (cliente.saldo_deuda || 0) + total_general,
-          updatedAt: Timestamp.now()
-        });
+        if (metodoPago === 'credito') {
+          transaction.update(clienteRef, {
+            saldo_deuda: increment(total_general), // Histórico
+            saldo_pendiente: increment(total_general), // Deuda actual
+            updatedAt: Timestamp.now()
+          });
+        }
       }
 
       const ventaRef = doc(collection(db, this.COLLECTION));
       const ventaData: Omit<Venta, 'id'> = {
+        tenantId,
+        sucursalId,
         items,
         total_fruta,
         total_envases,
         total: total_general,
         metodo_pago: metodoPago,
+        estado_pago: metodoPago === 'credito' ? 'pendiente' : 'pagado',
+        estado_factura: requiereFactura ? 'por_facturar' : 'no_requiere',
         sesion_id: sesionId,
+        vendedor_id: vendedorId,
         fecha: Timestamp.now(),
         numero_venta: numeroVenta,
         createdAt: Timestamp.now(),
         ...(clienteId ? { cliente_id: clienteId } : {}),
-        ...(clienteNombre ? { cliente_nombre: clienteNombre } : {})
+        ...(clienteNombre ? { cliente_nombre: clienteNombre } : { cliente_nombre: 'Cliente' }),
+        ...(clienteRut ? { cliente_rut: clienteRut } : {})
       };
 
-      transaction.set(ventaRef, ventaData);
+      transaction.set(ventaRef, sanitizeFirestoreData(ventaData));
 
       return ventaRef.id;
     });
   }
 
-  static async obtenerVentasPorSesion(sesionId: string): Promise<Venta[]> {
+  static async obtenerVentasPorSesion(sesionId: string, tenantId: string, sucursalId: string): Promise<Venta[]> {
     const q = query(
       collection(db, this.COLLECTION),
+      where('tenantId', '==', tenantId),
+      where('sucursalId', '==', sucursalId),
       where('sesion_id', '==', sesionId)
     );
 
@@ -151,8 +196,8 @@ export class VentasService {
       .sort((a, b) => b.fecha.toMillis() - a.fecha.toMillis());
   }
 
-  static async obtenerResumenSesion(sesionId: string) {
-    const ventas = await this.obtenerVentasPorSesion(sesionId);
+  static async obtenerResumenSesion(sesionId: string, tenantId: string, sucursalId: string) {
+    const ventas = await this.obtenerVentasPorSesion(sesionId, tenantId, sucursalId);
 
     const resumen = {
       total_ventas: 0,
@@ -161,7 +206,7 @@ export class VentasService {
       total_efectivo: 0,
       total_transferencia: 0,
       total_tarjeta: 0,
-      total_fiado: 0,
+      total_credito: 0,
       cantidad_ventas: ventas.length,
       ventas_detalle: ventas
     };
@@ -181,8 +226,8 @@ export class VentasService {
         case 'tarjeta':
           resumen.total_tarjeta += venta.total;
           break;
-        case 'fiado':
-          resumen.total_fiado += venta.total;
+        case 'credito':
+          resumen.total_credito += venta.total;
           break;
       }
     });
@@ -197,5 +242,14 @@ export class VentasService {
 
   static calcularTotal(neto: number, precioUnitario: number): number {
     return Number((neto * precioUnitario).toFixed(2));
+  }
+
+  static async marcarComoFacturado(ventaId: string, nroFactura: string) {
+    const ventaRef = doc(db, this.COLLECTION, ventaId);
+    await updateDoc(ventaRef, {
+      estado_factura: 'facturado',
+      nro_factura: nroFactura,
+      updatedAt: Timestamp.now()
+    });
   }
 }

@@ -27,7 +27,10 @@ export interface User {
   id: string
   name: string
   email: string
-  role: "admin" | "cashier"
+  role: "admin" | "cajero" | "vendedor"
+  tenantId: string
+  sucursalesIds: string[] // Sucursales a las que tiene acceso el usuario
+  avatar: string
 }
 
 export interface CashCount {

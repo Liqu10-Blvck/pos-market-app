@@ -54,3 +54,31 @@ export function parseChileanMoneyInput(value: string) {
 export function normalizeMoneyInput(value: string) {
   return value.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '')
 }
+
+/**
+ * Limpia un objeto de valores 'undefined' para que sea compatible con Firestore set()/add()
+ */
+export function sanitizeFirestoreData(data: any): any {
+  if (data === undefined) return null;
+  if (data === null || typeof data !== 'object') return data;
+  
+  // Preservar Timestamps de Firebase y objetos Date (no deben ser sanitizados como objetos planos)
+  if (data instanceof Date || typeof data.toMillis === 'function') {
+    return data;
+  }
+
+  if (Array.isArray(data)) {
+    return data.map(v => sanitizeFirestoreData(v));
+  }
+
+  // Solo sanitizar objetos planos {}
+  if (Object.prototype.toString.call(data) !== '[object Object]') {
+    return data;
+  }
+
+  const sanitized: any = {};
+  for (const [key, value] of Object.entries(data)) {
+    sanitized[key] = sanitizeFirestoreData(value);
+  }
+  return sanitized;
+}

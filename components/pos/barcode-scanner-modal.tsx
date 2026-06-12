@@ -284,16 +284,39 @@ export function BarcodeScannerModal({
 
               <TabsContent value="camera" className="mt-0 outline-none">
                 <div className="relative w-full h-[280px] bg-black rounded-2xl overflow-hidden border border-border/20 shadow-inner">
-                  {cameraPermission === 'granted' ? (
+                  {/* Always render video to prevent React Ref/Mount race conditions */}
+                  <video
+                    ref={videoRef}
+                    className={`w-full h-full object-cover ${cameraPermission === 'granted' ? 'block' : 'hidden'}`}
+                    playsInline
+                    muted
+                    autoPlay
+                  />
+
+                  {/* Pending state overlay */}
+                  {cameraPermission === 'pending' && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-3 bg-black">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                      <p className="text-xs font-semibold text-white/80">Iniciando cámara...</p>
+                    </div>
+                  )}
+
+                  {/* Denied state overlay */}
+                  {cameraPermission === 'denied' && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center text-muted-foreground gap-3 bg-black">
+                      <AlertCircle className="h-10 w-10 text-destructive/80" />
+                      <div>
+                        <p className="text-sm font-bold text-white">Acceso Denegado</p>
+                        <p className="text-xs mt-1 text-white/60 leading-relaxed">
+                          No se pudo acceder a la cámara. Habilita los permisos en tu navegador o escribe el SKU manualmente.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Scanning overlay (only visible when camera is granted and active) */}
+                  {cameraPermission === 'granted' && (
                     <>
-                      <video
-                        ref={videoRef}
-                        className="w-full h-full object-cover"
-                        playsInline
-                        muted
-                        autoPlay
-                      />
-                      
                       {/* Scanning visual overlay */}
                       <div className="absolute inset-0 border-[24px] border-black/40 pointer-events-none flex items-center justify-center">
                         {/* Target frame */}
@@ -341,21 +364,6 @@ export function BarcodeScannerModal({
                         {hasNativeDetector ? 'LECTOR NATIVO ACTIVO' : 'ESCANER EN VIVO'}
                       </div>
                     </>
-                  ) : cameraPermission === 'pending' ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground gap-3">
-                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                      <p className="text-xs font-semibold">Iniciando cámara...</p>
-                    </div>
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-muted-foreground gap-3 bg-muted/10">
-                      <AlertCircle className="h-10 w-10 text-destructive/80" />
-                      <div>
-                        <p className="text-sm font-bold text-foreground">Acceso Denegado</p>
-                        <p className="text-xs mt-1 text-muted-foreground leading-relaxed">
-                          No se pudo acceder a la cámara. Habilita los permisos en tu navegador o escribe el SKU manualmente.
-                        </p>
-                      </div>
-                    </div>
                   )}
                 </div>
                 

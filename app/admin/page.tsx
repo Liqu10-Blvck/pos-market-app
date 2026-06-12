@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { formatCLPCurrency, normalizeMoneyInput, parseChileanMoneyInput } from '@/lib/utils';
+import { formatCLPCurrency, normalizeMoneyInput, parseChileanMoneyInput, roundToChileanDecena } from '@/lib/utils';
 import { 
   Plus, 
   Edit, 
@@ -159,7 +159,7 @@ function AdminPage() {
     const cleanVal = normalizeMoneyInput(val);
     const costoNum = parseFloat(cleanVal) || 0;
     const margenNum = parseFloat(formData.margen) || 0;
-    const precioSugerido = Math.round(costoNum * (1 + margenNum / 100));
+    const precioSugerido = roundToChileanDecena(Math.round(costoNum * (1 + margenNum / 100)));
     
     setFormData(prev => ({
       ...prev,
@@ -171,7 +171,7 @@ function AdminPage() {
   const handleMargenChange = (val: string) => {
     const margenNum = parseFloat(val) || 0;
     const costoNum = parseFloat(formData.costo) || 0;
-    const precioSugerido = Math.round(costoNum * (1 + margenNum / 100));
+    const precioSugerido = roundToChileanDecena(Math.round(costoNum * (1 + margenNum / 100)));
 
     setFormData(prev => ({
       ...prev,
@@ -191,13 +191,13 @@ function AdminPage() {
       if (field === 'costo_caja' || field === 'cantidad_por_caja' || field === 'margen_deseado') {
         const costUnit = cantCaja > 0 ? (costCaja / cantCaja) : 0;
         const margUnit = parseFloat(updated.margen_deseado) || 0;
-        const sugUnit = Math.round(costUnit * (1 + margUnit / 100));
+        const sugUnit = roundToChileanDecena(Math.round(costUnit * (1 + margUnit / 100)));
         updated.precio_venta_unidad = sugUnit > 0 ? formatCLPCurrency(sugUnit) : '';
       }
       
       if (field === 'costo_caja' || field === 'margen_caja') {
         const margCaja = parseFloat(updated.margen_caja) || 0;
-        const sugCaja = Math.round(costCaja * (1 + margCaja / 100));
+        const sugCaja = roundToChileanDecena(Math.round(costCaja * (1 + margCaja / 100)));
         updated.precio_venta_caja = sugCaja > 0 ? formatCLPCurrency(sugCaja) : '';
       }
       

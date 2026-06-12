@@ -54,3 +54,14 @@ export function parseChileanMoneyInput(value: string) {
 export function normalizeMoneyInput(value: string) {
   return value.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '')
 }
+
+export function roundToChileanDecena(value: number): number {
+  const rounded = Math.round(value);
+  const lastDigit = rounded % 10;
+  if (lastDigit >= 1 && lastDigit <= 5) {
+    return rounded - lastDigit; // Round down to decena
+  } else if (lastDigit >= 6 && lastDigit <= 9) {
+    return rounded + (10 - lastDigit); // Round up to decena
+  }
+  return rounded;
+}

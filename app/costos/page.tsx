@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { formatCLPCurrency } from '@/lib/utils';
+import { formatCLPCurrency, roundToChileanDecena } from '@/lib/utils';
 import { 
   TrendingUp, 
   Sparkles, 
@@ -117,7 +117,7 @@ function CostosPage() {
     const margen = parseFloat(margenInput) || 0;
     
     if (costo <= 0) return 0;
-    return Math.round(costo * (1 + margen / 100));
+    return roundToChileanDecena(Math.round(costo * (1 + margen / 100)));
   };
 
   // Check if anything changed locally

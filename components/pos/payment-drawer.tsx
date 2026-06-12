@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { formatCLPCurrency } from '@/lib/utils';
+import { formatCLPCurrency, roundToChileanDecena } from '@/lib/utils';
 import { CreditCard, Banknote, UserCircle, CheckCircle2 } from 'lucide-react';
 
 interface PaymentDrawerProps {
@@ -57,21 +57,23 @@ export function PaymentDrawer({
     setPagoEfectivoInput(amount.toString());
   };
 
+  const totalCaja = metodoPago === 'efectivo' ? roundToChileanDecena(total) : total;
+
   const handleConfirm = () => {
     onConfirm(
       metodoPago,
       clienteSeleccionado || undefined,
-      metodoPago === 'efectivo' ? (montoEfectivo || total) : undefined
+      metodoPago === 'efectivo' ? (montoEfectivo || totalCaja) : undefined
     );
   };
 
   // Generate quick cash suggestions
   const standardBills = [1000, 2000, 5000, 10000, 20000];
-  let quickCashOptions = standardBills.filter(bill => bill > total);
+  let quickCashOptions = standardBills.filter(bill => bill > totalCaja);
   
-  if (quickCashOptions.length === 0 || total > 20000) {
-    const next5k = Math.ceil(total / 5000) * 5000;
-    const next10k = Math.ceil(total / 10000) * 10000;
+  if (quickCashOptions.length === 0 || totalCaja > 20000) {
+    const next5k = Math.ceil(totalCaja / 5000) * 5000;
+    const next10k = Math.ceil(totalCaja / 10000) * 10000;
     quickCashOptions = [next5k, next10k];
     if (next5k === next10k) {
       quickCashOptions = [next5k, next5k + 5000];
@@ -85,7 +87,7 @@ export function PaymentDrawer({
     { value: 'fiado', label: 'Fiado', icon: UserCircle, color: 'text-amber-600' },
   ];
 
-  const isCashInvalid = metodoPago === 'efectivo' && montoEfectivo > 0 && montoEfectivo < total;
+  const isCashInvalid = metodoPago === 'efectivo' && montoEfectivo > 0 && montoEfectivo < totalCaja;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -147,9 +149,16 @@ export function PaymentDrawer({
                 <div className="h-px bg-border dark:bg-border-dark my-2" />
                 <div className="flex items-end justify-between gap-3">
                   <span className="text-lg font-semibold">Total</span>
-                  <span className="text-2xl font-bold text-primary dark:text-primary-300 sm:text-4xl">
-                    {formatCLPCurrency(total)}
-                  </span>
+                  <div className="flex flex-col items-end sm:flex-row sm:items-baseline sm:gap-2">
+                    {metodoPago === 'efectivo' && totalCaja !== total && (
+                      <span className="text-sm text-muted-foreground line-through">
+                        {formatCLPCurrency(total)}
+                      </span>
+                    )}
+                    <span className="text-2xl font-bold text-primary dark:text-primary-300 sm:text-4xl">
+                      {formatCLPCurrency(totalCaja)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -221,7 +230,7 @@ export function PaymentDrawer({
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => selectQuickCash(total)}
+                    onClick={() => selectQuickCash(totalCaja)}
                     className="h-9 rounded-xl text-xs font-bold border-border/60 bg-background hover:bg-muted"
                   >
                     Monto Exacto
@@ -242,17 +251,17 @@ export function PaymentDrawer({
                 {/* Live Change Calculation */}
                 {montoEfectivo > 0 && (
                   <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                    montoEfectivo >= total 
+                    montoEfectivo >= totalCaja 
                       ? 'bg-emerald-500/10 dark:bg-emerald-500/20 border-emerald-500/15' 
                       : 'bg-red-500/10 dark:bg-red-500/20 border-red-500/15'
                   }`}>
-                    <span className={`text-xs font-bold ${montoEfectivo >= total ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-800 dark:text-red-300'}`}>
-                      {montoEfectivo >= total ? 'Vuelto a entregar:' : 'Monto insuficiente:'}
+                    <span className={`text-xs font-bold ${montoEfectivo >= totalCaja ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-800 dark:text-red-300'}`}>
+                      {montoEfectivo >= totalCaja ? 'Vuelto a entregar:' : 'Monto insuficiente:'}
                     </span>
-                    <span className={`text-lg font-black ${montoEfectivo >= total ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {montoEfectivo >= total 
-                        ? formatCLPCurrency(montoEfectivo - total) 
-                        : `Faltan ${formatCLPCurrency(total - montoEfectivo)}`}
+                    <span className={`text-lg font-black ${montoEfectivo >= totalCaja ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {montoEfectivo >= totalCaja 
+                        ? formatCLPCurrency(montoEfectivo - totalCaja) 
+                        : `Faltan ${formatCLPCurrency(totalCaja - montoEfectivo)}`}
                     </span>
                   </div>
                 )}
@@ -316,9 +325,9 @@ export function PaymentDrawer({
                 <>
                   <CheckCircle2 className="mr-2 h-6 w-6" />
                   <span className="truncate">
-                    {metodoPago === 'efectivo' && montoEfectivo >= total
-                      ? `Confirmar - Vuelto: ${formatCLPCurrency(montoEfectivo - total)}`
-                      : `Confirmar Venta - ${formatCLPCurrency(total)}`}
+                    {metodoPago === 'efectivo' && montoEfectivo >= totalCaja
+                      ? `Confirmar - Vuelto: ${formatCLPCurrency(montoEfectivo - totalCaja)}`
+                      : `Confirmar Venta - ${formatCLPCurrency(totalCaja)}`}
                   </span>
                 </>
               )}

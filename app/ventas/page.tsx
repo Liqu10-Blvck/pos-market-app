@@ -16,9 +16,10 @@ import { useToast } from '@/hooks/use-toast';
 import { AppNav } from '@/components/layout/app-nav';
 import { formatCLPCurrency } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, DollarSign, Search, Wifi, WifiOff, Package } from 'lucide-react';
+import { ShoppingCart, DollarSign, Search, Wifi, WifiOff, Package, ScanBarcode } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ProtectedRoute } from '@/components/layout/protected-route';
+import { BarcodeScannerModal } from '@/components/pos/barcode-scanner-modal';
 
 function VentasPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -32,6 +33,7 @@ function VentasPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [productosFiltrados, setProductosFiltrados] = useState<Producto[]>([]);
   const [isOnline, setIsOnline] = useState(true);
+  const [modalScannerOpen, setModalScannerOpen] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -63,13 +65,15 @@ function VentasPage() {
   }, []);
 
   useEffect(() => {
-    if (searchQuery.trim() === '') {
+    const query = searchQuery.toLowerCase().trim();
+    if (query === '') {
       setProductosFiltrados(productos);
       return;
     }
     setProductosFiltrados(
       productos.filter((producto) =>
-        producto.nombre.toLowerCase().includes(searchQuery.toLowerCase())
+        producto.nombre.toLowerCase().includes(query) ||
+        (producto.sku && producto.sku.toLowerCase().includes(query))
       )
     );
   }, [productos, searchQuery]);
@@ -90,6 +94,72 @@ function VentasPage() {
            console.error('Error al verificar sesión:', error);
     }
   };
+
+  const handleProductDetected = (producto: Producto) => {
+    if (producto.stock_actual <= 0) {
+      toast({
+        title: 'Sin stock',
+        description: `El producto ${producto.nombre} no tiene stock disponible para la venta.`,
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (producto.unidad === 'kg') {
+      setProductoSeleccionado(producto);
+      setModalPesajeOpen(true);
+    } else {
+      const item: ItemVenta = {
+        producto_id: producto.id,
+        nombre: producto.nombre,
+        precio_unitario: producto.precio,
+        unidad: producto.unidad,
+        neto: 1,
+        total: Math.round(producto.precio),
+        cantidad: 1
+      };
+      handleAgregarAlCarrito(item);
+    }
+  };
+
+  // Global barcode listener for physical gun scanners
+  useEffect(() => {
+    let buffer = '';
+    let lastKeyTime = Date.now();
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const currentTime = Date.now();
+      
+      if (currentTime - lastKeyTime > 50) {
+        buffer = '';
+      }
+      lastKeyTime = currentTime;
+
+      if (e.key === 'Enter') {
+        if (buffer.length >= 3) {
+          const matched = productos.find(p => p.sku && p.sku.trim() === buffer.trim());
+          if (matched) {
+            e.preventDefault();
+            e.stopPropagation();
+            handleProductDetected(matched);
+            if (activeEl && activeEl instanceof HTMLInputElement) {
+              activeEl.value = '';
+            }
+            setSearchQuery('');
+          }
+          buffer = '';
+        }
+      } else if (e.key.length === 1 && /^[a-zA-Z0-9]$/.test(e.key)) {
+        buffer += e.key;
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [productos]);
 
   const handleSeleccionarProducto = (producto: Producto) => {
     if (producto.stock_actual <= 0) return;
@@ -191,15 +261,39 @@ function VentasPage() {
                )}
             </div>
 
-            <div className="relative max-w-xl">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Buscar por nombre..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-9 pl-10 border-border/40 bg-background text-sm rounded-xl focus:ring-0"
-              />
+            <div className="flex items-center gap-2 max-w-xl w-full">
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Buscar por nombre o SKU..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && searchQuery.trim() !== '') {
+                      const query = searchQuery.trim().toLowerCase();
+                      const matched = productos.find(
+                        p => p.sku && p.sku.trim().toLowerCase() === query
+                      );
+                      if (matched) {
+                        e.preventDefault();
+                        handleProductDetected(matched);
+                        setSearchQuery('');
+                      }
+                    }
+                  }}
+                  className="h-10 pl-10 border-border/40 bg-background text-sm rounded-xl focus:ring-0 text-[16px] md:text-sm"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setModalScannerOpen(true)}
+                className="h-10 px-3 bg-background hover:bg-muted border-border/40 rounded-xl flex items-center gap-1.5 shrink-0"
+              >
+                <ScanBarcode className="h-5 w-5 text-primary" />
+                <span className="hidden sm:inline text-xs font-bold">Escanear SKU</span>
+              </Button>
             </div>
           </header>
 
@@ -264,6 +358,7 @@ function VentasPage() {
 
       <WeightModal producto={productoSeleccionado} open={modalPesajeOpen} onClose={() => setModalPesajeOpen(false)} onAgregar={handleAgregarAlCarrito} />
       <PaymentDrawer open={modalPagoOpen} onOpenChange={setModalPagoOpen} items={carrito} total={totalCarrito} clientes={clientes} onConfirm={handleProcesarVenta} procesando={procesando} />
+      <BarcodeScannerModal open={modalScannerOpen} onClose={() => setModalScannerOpen(false)} productos={productos} onDetected={handleProductDetected} />
     </div>
   );
 }

@@ -60,7 +60,8 @@ export class VentasService {
         }
 
         const producto = snap.data() as Producto;
-        const nuevoStock = producto.stock_actual - item.neto;
+        const multiplicador = item.es_caja && item.cantidad_por_caja ? item.cantidad_por_caja : 1;
+        const nuevoStock = producto.stock_actual - (item.neto * multiplicador);
         if (nuevoStock < 0) {
           throw new Error(`Stock insuficiente para ${item.nombre}. Disponible: ${producto.stock_actual}`);
         }

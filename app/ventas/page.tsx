@@ -37,7 +37,7 @@ function VentasPage() {
   useEffect(() => {
     const unsubProductos = onSnapshot(collection(db, 'productos'), (snapshot) => {
       const productosData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Producto[];
-      const activos = productosData.filter((producto) => producto.activo !== false);
+      const activos = productosData.filter((producto) => producto.activo !== false && producto.es_interes !== true);
       setProductos(activos);
       setProductosFiltrados(activos);
     });
@@ -134,13 +134,23 @@ function VentasPage() {
     setModalPagoOpen(true);
   };
 
-  const handleProcesarVenta = async (metodoPago: MetodoPago, clienteSeleccionado?: string) => {
+  const handleProcesarVenta = async (metodoPago: MetodoPago, clienteSeleccionado?: string, pagoCon?: number) => {
     if (!sesionActiva) return;
     setProcesando(true);
     try {
       const items: ItemVenta[] = carrito.map(({ temp_id, ...item }) => item);
       await VentasService.procesarVenta(items, metodoPago, sesionActiva, clienteSeleccionado || undefined);
-      toast({ title: 'Venta exitosa' });
+      
+      const vuelto = (pagoCon && pagoCon > totalCarrito) ? (pagoCon - totalCarrito) : 0;
+      const description = vuelto > 0 
+        ? `Vuelto a entregar: ${formatCLPCurrency(vuelto)}` 
+        : `Pago registrado con ${metodoPago === 'efectivo' ? 'Efectivo' : metodoPago}`;
+
+      toast({ 
+        title: 'Venta exitosa', 
+        description,
+        variant: 'success'
+      });
       setCarrito([]);
       setModalPagoOpen(false);
     } catch (error: any) {

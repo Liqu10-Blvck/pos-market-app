@@ -19,6 +19,7 @@ interface WeightModalProps {
 }
 
 export function WeightModal({ producto, open, onClose, onAgregar }: WeightModalProps) {
+  const [modoVenta, setModoVenta] = useState<'detalle' | 'caja'>('detalle');
   const [activeInput, setActiveInput] = useState<'bruto' | 'tara' | 'cantidad' | 'precio'>('bruto');
   const [pesoBruto, setPesoBruto] = useState('');
   const [tara, setTara] = useState('');
@@ -31,14 +32,16 @@ export function WeightModal({ producto, open, onClose, onAgregar }: WeightModalP
       setTara('');
       setCantidad('');
       setPrecioManual(producto.precio.toString());
+      setModoVenta('detalle');
       setActiveInput(producto.unidad === 'kg' ? 'bruto' : 'cantidad');
     }
   }, [open, producto]);
 
   if (!producto) return null;
 
-  const esKg = producto.unidad === 'kg';
-  const unitLabel = esKg ? 'kg' : 'unid';
+  const esVentaCaja = modoVenta === 'caja';
+  const esKg = producto.unidad === 'kg' && !esVentaCaja;
+  const unitLabel = esVentaCaja ? 'Caja(s)' : (producto.unidad === 'kg' ? 'kg' : 'unid');
   
   const calcularNeto = () => {
     if (esKg) {
@@ -52,19 +55,25 @@ export function WeightModal({ producto, open, onClose, onAgregar }: WeightModalP
   const neto = calcularNeto();
   const precioActual = parseFloat(precioManual) || 0;
   const total = VentasService.calcularTotal(neto, precioActual);
-  const isReadyToAdd = neto > 0 && neto <= producto.stock_actual;
-  const isPriceModified = precioActual !== producto.precio;
+  
+  // Stock checking helper based on sale mode
+  const stockRequerido = esVentaCaja && producto.cantidad_por_caja ? (neto * producto.cantidad_por_caja) : neto;
+  const isReadyToAdd = neto > 0 && stockRequerido <= producto.stock_actual;
+  
+  const precioOriginal = esVentaCaja ? (producto.precio_caja || 0) : producto.precio;
+  const isPriceModified = precioActual !== precioOriginal;
 
   const handleAgregar = () => {
     if (!isReadyToAdd) return;
 
     const item: ItemVenta = {
       producto_id: producto.id,
-      nombre: producto.nombre,
+      nombre: esVentaCaja ? `${producto.nombre} (Caja)` : producto.nombre,
       precio_unitario: precioActual,
-      unidad: producto.unidad,
+      unidad: esVentaCaja ? 'unid' : producto.unidad,
       neto,
-      total
+      total,
+      ...(esVentaCaja ? { es_caja: true, cantidad_por_caja: producto.cantidad_por_caja } : {})
     };
 
     if (esKg) {
@@ -115,13 +124,14 @@ export function WeightModal({ producto, open, onClose, onAgregar }: WeightModalP
                   </DialogDescription>
                 </div>
                 <Badge variant="secondary" className="font-bold text-xs h-8 px-3 bg-muted dark:bg-muted/50 text-foreground border-border/40">
-                  Stock: {producto.stock_actual}
+                  Stock: {producto.stock_actual.toFixed(2)} {producto.unidad}
+                  {producto.cantidad_por_caja && producto.cantidad_por_caja > 0 ? ` (~${(producto.stock_actual / producto.cantidad_por_caja).toFixed(1)} Cajas)` : ''}
                 </Badge>
               </DialogHeader>
 
               <div className="mt-3 flex items-center gap-2">
                 <span className={`text-sm font-bold ${isPriceModified ? 'text-muted-foreground line-through opacity-50' : 'text-primary'}`}>
-                  {formatCLPCurrency(producto.precio)}/{unitLabel}
+                  {formatCLPCurrency(precioOriginal)}/{unitLabel}
                 </span>
                 {isPriceModified && (
                   <span className="text-sm font-black text-amber-500 dark:text-amber-400">
@@ -130,6 +140,48 @@ export function WeightModal({ producto, open, onClose, onAgregar }: WeightModalP
                 )}
               </div>
             </div>
+
+            {/* Mode Selector Tabs (Detail vs Box) */}
+            {producto.cantidad_por_caja && producto.precio_caja && (
+              <div className="grid grid-cols-2 gap-2 p-1 bg-muted/40 dark:bg-muted/10 rounded-xl mb-4 border border-border/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModoVenta('detalle');
+                    setPrecioManual(producto.precio.toString());
+                    setActiveInput(producto.unidad === 'kg' ? 'bruto' : 'cantidad');
+                    setCantidad('');
+                    setPesoBruto('');
+                    setTara('');
+                  }}
+                  className={`h-9 rounded-lg text-xs font-black transition-all ${
+                    modoVenta === 'detalle'
+                      ? 'bg-background shadow-sm text-primary dark:text-white dark:bg-primary'
+                      : 'text-muted-foreground hover:bg-background/40'
+                  }`}
+                >
+                  Detalle ({producto.unidad === 'kg' ? 'Kilo' : 'Unid'})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModoVenta('caja');
+                    setPrecioManual((producto.precio_caja || 0).toString());
+                    setActiveInput('cantidad');
+                    setCantidad('');
+                    setPesoBruto('');
+                    setTara('');
+                  }}
+                  className={`h-9 rounded-lg text-xs font-black transition-all ${
+                    modoVenta === 'caja'
+                      ? 'bg-background shadow-sm text-primary dark:text-white dark:bg-primary'
+                      : 'text-muted-foreground hover:bg-background/40'
+                  }`}
+                >
+                  Caja Completa ({producto.cantidad_por_caja} {producto.unidad})
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-3 gap-2 bg-muted/40 dark:bg-muted/10 p-1.5 rounded-2xl mb-4 border border-border/10">
               {esKg ? (
@@ -188,7 +240,7 @@ export function WeightModal({ producto, open, onClose, onAgregar }: WeightModalP
           </div>
 
           <AnimatePresence>
-            {neto > producto.stock_actual && (
+            {stockRequerido > producto.stock_actual && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}

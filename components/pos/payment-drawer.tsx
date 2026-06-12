@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { CarritoItem, MetodoPago, Cliente } from '@/lib/types/pos';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { formatCLPCurrency } from '@/lib/utils';
@@ -16,7 +17,7 @@ interface PaymentDrawerProps {
   items: CarritoItem[];
   total: number;
   clientes: Cliente[];
-  onConfirm: (metodoPago: MetodoPago, clienteId?: string) => void;
+  onConfirm: (metodoPago: MetodoPago, clienteId?: string, pagoCon?: number) => void;
   procesando: boolean;
 }
 
@@ -32,9 +33,50 @@ export function PaymentDrawer({
   const [metodoPago, setMetodoPago] = useState<MetodoPago>('efectivo');
   const [clienteSeleccionado, setClienteSeleccionado] = useState<string>('');
 
-  const handleConfirm = () => {
-    onConfirm(metodoPago, clienteSeleccionado || undefined);
+  // Cash payment states
+  const [pagoEfectivoInput, setPagoEfectivoInput] = useState<string>('');
+  const [montoEfectivo, setMontoEfectivo] = useState<number>(0);
+
+  // Reset cash states on modal open/close
+  useEffect(() => {
+    if (!open) {
+      setPagoEfectivoInput('');
+      setMontoEfectivo(0);
+    }
+  }, [open]);
+
+  const handlePagoEfectivoChange = (val: string) => {
+    const cleanVal = val.replace(/[^\d]/g, '');
+    const num = parseInt(cleanVal) || 0;
+    setPagoEfectivoInput(cleanVal);
+    setMontoEfectivo(num);
   };
+
+  const selectQuickCash = (amount: number) => {
+    setMontoEfectivo(amount);
+    setPagoEfectivoInput(amount.toString());
+  };
+
+  const handleConfirm = () => {
+    onConfirm(
+      metodoPago,
+      clienteSeleccionado || undefined,
+      metodoPago === 'efectivo' ? (montoEfectivo || total) : undefined
+    );
+  };
+
+  // Generate quick cash suggestions
+  const standardBills = [1000, 2000, 5000, 10000, 20000];
+  let quickCashOptions = standardBills.filter(bill => bill > total);
+  
+  if (quickCashOptions.length === 0 || total > 20000) {
+    const next5k = Math.ceil(total / 5000) * 5000;
+    const next10k = Math.ceil(total / 10000) * 10000;
+    quickCashOptions = [next5k, next10k];
+    if (next5k === next10k) {
+      quickCashOptions = [next5k, next5k + 5000];
+    }
+  }
 
   const paymentMethods = [
     { value: 'efectivo', label: 'Efectivo', icon: Banknote, color: 'text-green-600' },
@@ -42,6 +84,8 @@ export function PaymentDrawer({
     { value: 'tarjeta', label: 'Tarjeta', icon: CreditCard, color: 'text-purple-600' },
     { value: 'fiado', label: 'Fiado', icon: UserCircle, color: 'text-amber-600' },
   ];
+
+  const isCashInvalid = metodoPago === 'efectivo' && montoEfectivo > 0 && montoEfectivo < total;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -149,6 +193,75 @@ export function PaymentDrawer({
               </div>
             </div>
 
+            {/* Cash Input Form for Efectivo */}
+            {metodoPago === 'efectivo' && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="space-y-4 rounded-2xl border border-border/85 bg-muted/20 p-4 dark:bg-muted/10 overflow-hidden"
+              >
+                <div className="space-y-1.5">
+                  <Label htmlFor="monto_efectivo" className="text-xs font-black text-muted-foreground uppercase tracking-wide">
+                    ¿Con cuánto paga el cliente?
+                  </Label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground">$</span>
+                    <Input
+                      id="monto_efectivo"
+                      type="text"
+                      inputMode="numeric"
+                      value={pagoEfectivoInput}
+                      onChange={(e) => handlePagoEfectivoChange(e.target.value)}
+                      placeholder="Ej: 5000"
+                      className="pl-8 h-11 text-base font-bold border-border/70 bg-background shadow-sm rounded-xl text-[16px] md:text-sm focus:ring-1 focus:ring-primary/20"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick cash shortcut buttons */}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => selectQuickCash(total)}
+                    className="h-9 rounded-xl text-xs font-bold border-border/60 bg-background hover:bg-muted"
+                  >
+                    Monto Exacto
+                  </Button>
+                  {quickCashOptions.map((amount) => (
+                    <Button
+                      key={amount}
+                      type="button"
+                      variant="outline"
+                      onClick={() => selectQuickCash(amount)}
+                      className="h-9 rounded-xl text-xs font-bold border-border/60 bg-background hover:bg-muted"
+                    >
+                      {formatCLPCurrency(amount)}
+                    </Button>
+                  ))}
+                </div>
+
+                {/* Live Change Calculation */}
+                {montoEfectivo > 0 && (
+                  <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                    montoEfectivo >= total 
+                      ? 'bg-emerald-500/10 dark:bg-emerald-500/20 border-emerald-500/15' 
+                      : 'bg-red-500/10 dark:bg-red-500/20 border-red-500/15'
+                  }`}>
+                    <span className={`text-xs font-bold ${montoEfectivo >= total ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-800 dark:text-red-300'}`}>
+                      {montoEfectivo >= total ? 'Vuelto a entregar:' : 'Monto insuficiente:'}
+                    </span>
+                    <span className={`text-lg font-black ${montoEfectivo >= total ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {montoEfectivo >= total 
+                        ? formatCLPCurrency(montoEfectivo - total) 
+                        : `Faltan ${formatCLPCurrency(total - montoEfectivo)}`}
+                    </span>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
             {/* Client Selection for Fiado */}
             {metodoPago === 'fiado' && (
               <motion.div
@@ -193,8 +306,8 @@ export function PaymentDrawer({
             <Button
               size="lg"
               onClick={handleConfirm}
-              disabled={procesando || (metodoPago === 'fiado' && !clienteSeleccionado)}
-              className="h-14 w-full bg-primary text-base font-bold shadow-hard transition-transform active:scale-95 hover:bg-primary-700 sm:h-16 sm:text-lg"
+              disabled={procesando || (metodoPago === 'fiado' && !clienteSeleccionado) || isCashInvalid}
+              className="h-14 w-full bg-primary text-base font-bold shadow-hard transition-transform active:scale-95 hover:bg-primary-700 sm:h-16 sm:text-lg rounded-2xl"
             >
               {procesando ? (
                 <motion.div
@@ -205,7 +318,11 @@ export function PaymentDrawer({
               ) : (
                 <>
                   <CheckCircle2 className="mr-2 h-6 w-6" />
-                  <span className="truncate">Confirmar Venta - {formatCLPCurrency(total)}</span>
+                  <span className="truncate">
+                    {metodoPago === 'efectivo' && montoEfectivo >= total
+                      ? `Confirmar - Vuelto: ${formatCLPCurrency(montoEfectivo - total)}`
+                      : `Confirmar Venta - ${formatCLPCurrency(total)}`}
+                  </span>
                 </>
               )}
             </Button>

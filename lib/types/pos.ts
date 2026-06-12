@@ -15,6 +15,9 @@ export interface Producto {
   margen_deseado?: number;
   sku?: string;
   fecha_caducidad?: string;
+  es_interes?: boolean;
+  cantidad_por_caja?: number;
+  precio_caja?: number;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -29,6 +32,8 @@ export interface ItemVenta {
   tara?: number;
   neto: number;
   total: number;
+  es_caja?: boolean;
+  cantidad_por_caja?: number;
 }
 
 export interface Venta {

@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot, doc, addDoc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, addDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { uploadImage } from '@/lib/firebase/storage';
 import { Producto } from '@/lib/types/pos';
+import { CostosService } from '@/lib/services/costos.service';
 import { AppNav } from '@/components/layout/app-nav';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,10 +26,10 @@ import {
   Clock, 
   Loader2, 
   AlertTriangle,
-  FileImage,
   Trash2,
   Percent,
-  TrendingUp
+  TrendingUp,
+  ShoppingBag
 } from 'lucide-react';
 import { ProtectedRoute } from '@/components/layout/protected-route';
 
@@ -40,12 +40,15 @@ interface LocalImage {
 
 function AdminPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [tabActiva, setTabActiva] = useState<'catalogo' | 'interes'>('catalogo');
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalCompraOpen, setModalCompraOpen] = useState(false);
   const [editando, setEditando] = useState<Producto | null>(null);
+  const [productoCompra, setProductoCompra] = useState<Producto | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [analizandoIA, setAnalizandoIA] = useState(false);
 
-  // Form state
+  // Form state for creating/editing product
   const [formData, setFormData] = useState({
     nombre: '',
     costo: '',
@@ -55,6 +58,20 @@ function AdminPage() {
     stock_actual: '',
     sku: '',
     fecha_caducidad: '',
+    es_interes: false,
+    cantidad_por_caja: '',
+    precio_caja: '',
+  });
+
+  // Form state for purchasing / receiving stock
+  const [compraData, setCompraData] = useState({
+    cantidad_por_caja: '12',
+    cajas_compradas: '1',
+    costo_caja: '',
+    margen_deseado: '30',
+    precio_venta_unidad: '',
+    margen_caja: '30',
+    precio_venta_caja: '',
   });
 
   // Multiple captured images
@@ -83,11 +100,14 @@ function AdminPage() {
         nombre: producto.nombre,
         costo: producto.costo_actual ? producto.costo_actual.toString() : '',
         margen: producto.margen_deseado ? producto.margen_deseado.toString() : '30',
-        precio: formatCLPCurrency(producto.precio),
+        precio: producto.precio ? formatCLPCurrency(producto.precio) : '',
         unidad: producto.unidad,
         stock_actual: producto.stock_actual.toString(),
         sku: producto.sku || '',
         fecha_caducidad: producto.fecha_caducidad || '',
+        es_interes: producto.es_interes || false,
+        cantidad_por_caja: producto.cantidad_por_caja ? producto.cantidad_por_caja.toString() : '',
+        precio_caja: producto.precio_caja ? formatCLPCurrency(producto.precio_caja) : '',
       });
       // Load current product image if it has one
       setLocalImages(producto.imagen_url ? [{ file: null, url: producto.imagen_url }] : []);
@@ -101,14 +121,39 @@ function AdminPage() {
         unidad: 'kg', 
         stock_actual: '', 
         sku: '', 
-        fecha_caducidad: '' 
+        fecha_caducidad: '',
+        es_interes: tabActiva === 'interes', // default to active tab state
+        cantidad_por_caja: '',
+        precio_caja: '',
       });
       setLocalImages([]);
     }
     setModalOpen(true);
   };
 
-  // Live price calculation helpers
+  const handleAbrirModalCompra = (producto: Producto) => {
+    setProductoCompra(producto);
+    const cantCaja = producto.cantidad_por_caja || 12;
+    const costCaja = producto.costo_actual && producto.cantidad_por_caja 
+      ? Math.round(producto.costo_actual * producto.cantidad_por_caja) 
+      : 0;
+
+    const sugeridoUnidad = producto.precio || 0;
+    const sugeridoCaja = producto.precio_caja || (sugeridoUnidad * cantCaja);
+
+    setCompraData({
+      cantidad_por_caja: cantCaja.toString(),
+      cajas_compradas: '1',
+      costo_caja: costCaja > 0 ? costCaja.toString() : '',
+      margen_deseado: producto.margen_deseado ? producto.margen_deseado.toString() : '30',
+      precio_venta_unidad: sugeridoUnidad > 0 ? formatCLPCurrency(sugeridoUnidad) : '',
+      margen_caja: '30',
+      precio_venta_caja: sugeridoCaja > 0 ? formatCLPCurrency(sugeridoCaja) : '',
+    });
+    setModalCompraOpen(true);
+  };
+
+  // Live price calculation helpers for admin dialog
   const handleCostoChange = (val: string) => {
     const cleanVal = normalizeMoneyInput(val);
     const costoNum = parseFloat(cleanVal) || 0;
@@ -132,6 +177,31 @@ function AdminPage() {
       margen: val,
       precio: precioSugerido > 0 ? formatCLPCurrency(precioSugerido) : ''
     }));
+  };
+
+  // Live calculation helpers for purchase/abastecer dialog
+  const handleCompraCajaChange = (field: string, val: string) => {
+    setCompraData(prev => {
+      const updated = { ...prev, [field]: val };
+      
+      const cantCaja = parseFloat(updated.cantidad_por_caja) || 1;
+      const costCaja = parseFloat(updated.costo_caja) || 0;
+      
+      if (field === 'costo_caja' || field === 'cantidad_por_caja' || field === 'margen_deseado') {
+        const costUnit = cantCaja > 0 ? (costCaja / cantCaja) : 0;
+        const margUnit = parseFloat(updated.margen_deseado) || 0;
+        const sugUnit = Math.round(costUnit * (1 + margUnit / 100));
+        updated.precio_venta_unidad = sugUnit > 0 ? formatCLPCurrency(sugUnit) : '';
+      }
+      
+      if (field === 'costo_caja' || field === 'margen_caja') {
+        const margCaja = parseFloat(updated.margen_caja) || 0;
+        const sugCaja = Math.round(costCaja * (1 + margCaja / 100));
+        updated.precio_venta_caja = sugCaja > 0 ? formatCLPCurrency(sugCaja) : '';
+      }
+      
+      return updated;
+    });
   };
 
   const handleTriggerCamera = () => {
@@ -225,11 +295,13 @@ function AdminPage() {
 
   const handleGuardar = async () => {
     console.log('handleGuardar: Iniciando guardado...', formData);
-    if (!formData.nombre || !formData.precio || !formData.stock_actual) {
+    if (!formData.nombre || (!formData.es_interes && (!formData.precio || !formData.stock_actual))) {
       console.log('handleGuardar: Campos obligatorios incompletos!');
       toast({
         title: 'Campos incompletos',
-        description: 'El nombre, precio (venta) y stock son requeridos.',
+        description: formData.es_interes 
+          ? 'El nombre del producto es requerido para clasificarlo como Interés.'
+          : 'El nombre, precio (venta) y stock son requeridos.',
         variant: 'destructive'
       });
       return;
@@ -242,12 +314,14 @@ function AdminPage() {
       console.log('handleGuardar: Modo:', isNew ? 'NUEVO' : 'EDICIÓN', 'ID:', productoId);
 
       // Conversión y saneamiento seguro
-      const parsedPrecio = parseChileanMoneyInput(formData.precio);
+      const parsedPrecio = formData.precio ? parseChileanMoneyInput(formData.precio) : 0;
       const parsedStock = parseFloat(formData.stock_actual) || 0;
       const parsedCosto = formData.costo ? parseFloat(formData.costo) : null;
       const parsedMargen = formData.margen ? parseFloat(formData.margen) : null;
       const cleanSku = (formData.sku || '').trim() || null;
       const cleanFecha = formData.fecha_caducidad || null;
+      const parsedCantidadCaja = formData.cantidad_por_caja ? parseFloat(formData.cantidad_por_caja) : null;
+      const parsedPrecioCaja = formData.precio_caja ? parseChileanMoneyInput(formData.precio_caja) : null;
 
       console.log('handleGuardar: Parámetros saneados:', { parsedPrecio, parsedStock, parsedCosto, parsedMargen, cleanSku, cleanFecha });
 
@@ -260,13 +334,15 @@ function AdminPage() {
         fecha_caducidad: cleanFecha,
         costo_actual: parsedCosto,
         margen_deseado: parsedMargen,
+        es_interes: formData.es_interes,
+        cantidad_por_caja: parsedCantidadCaja,
+        precio_caja: parsedPrecioCaja,
         activo: true,
         updatedAt: Timestamp.now()
       };
 
       if (isNew) {
         console.log('handleGuardar: Creando producto en Firestore...');
-        // 1. Crear documento primero (sin await para evitar bloqueos por red/persistencia offline)
         addDoc(collection(db, 'productos'), {
           ...productoData,
           imagen_url: null,
@@ -281,7 +357,7 @@ function AdminPage() {
             variant: 'destructive'
           });
         });
-        toast({ title: 'Producto creado' });
+        toast({ title: formData.es_interes ? 'Producto de Interés creado' : 'Producto creado' });
       } else {
         if (!productoId) {
           throw new Error('ID de producto no encontrado para actualizar.');
@@ -290,20 +366,7 @@ function AdminPage() {
         const docRef = doc(db, 'productos', productoId);
         
         let finalImageUrl = editando?.imagen_url || '';
-        // 2. Subir imagen para edición (Desactivado de momento a petición del usuario)
-        /*
-        const newLocalImage = localImages.find(img => img.file !== null);
-        if (newLocalImage && newLocalImage.file) {
-          console.log('handleGuardar: Subiendo nueva imagen para producto existente...');
-          finalImageUrl = await uploadImage(`productos/${productoId}/imagen.jpg`, newLocalImage.file);
-          console.log('handleGuardar: Imagen actualizada con éxito:', finalImageUrl);
-        } else if (localImages.length === 0) {
-          console.log('handleGuardar: El usuario eliminó la imagen.');
-          finalImageUrl = '';
-        }
-        */
 
-        // Actualizar documento (sin await para evitar bloqueos por red/persistencia offline)
         updateDoc(docRef, {
           ...productoData,
           imagen_url: finalImageUrl || null
@@ -334,6 +397,67 @@ function AdminPage() {
     }
   };
 
+  const handleGuardarCompra = () => {
+    if (!productoCompra) return;
+    
+    const cantCaja = parseFloat(compraData.cantidad_por_caja) || 0;
+    const cajasCompradas = parseFloat(compraData.cajas_compradas) || 0;
+    const costCaja = parseFloat(compraData.costo_caja) || 0;
+    
+    if (cantCaja <= 0 || cajasCompradas <= 0 || costCaja <= 0) {
+      toast({
+        title: 'Valores inválidos',
+        description: 'La cantidad por caja, cajas recibidas y costo por caja deben ser mayores a 0.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const stockAIngresar = cajasCompradas * cantCaja;
+    const costoUnidad = costCaja / cantCaja;
+    const margenUnidad = parseFloat(compraData.margen_deseado) || 0;
+    const precioUnidad = parseChileanMoneyInput(compraData.precio_venta_unidad);
+    const precioCaja = parseChileanMoneyInput(compraData.precio_venta_caja);
+
+    setGuardando(true);
+    
+    // Firestore Update (non-blocking)
+    const docRef = doc(db, 'productos', productoCompra.id);
+    const newStock = (productoCompra.stock_actual || 0) + stockAIngresar;
+    
+    updateDoc(docRef, {
+      es_interes: false,
+      activo: true,
+      stock_actual: newStock,
+      costo_actual: costoUnidad,
+      margen_deseado: margenUnidad,
+      precio: precioUnidad,
+      precio_caja: precioCaja > 0 ? precioCaja : null,
+      cantidad_por_caja: cantCaja,
+      updatedAt: Timestamp.now()
+    }).then(() => {
+      // Log Daily Cost
+      return CostosService.registrarCostoDiario(productoCompra.id, productoCompra.nombre, costoUnidad, margenUnidad);
+    }).then(() => {
+      console.log('Abastecimiento de cajas completado.');
+    }).catch(err => {
+      console.error('Error al registrar compra:', err);
+      toast({
+        title: 'Error de sincronización',
+        description: err.message,
+        variant: 'destructive'
+      });
+    });
+
+    toast({
+      title: 'Compra registrada',
+      description: `Ingresados ${stockAIngresar.toFixed(2)} ${productoCompra.unidad} al inventario.`
+    });
+
+    setModalCompraOpen(false);
+    setGuardando(false);
+  };
+
   const obtenerDiasParaVencer = (fechaCaducidad: string) => {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
@@ -342,6 +466,15 @@ function AdminPage() {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
   };
+
+  // Filter products based on active tab
+  const productosFiltrados = productos.filter(p => {
+    if (tabActiva === 'catalogo') {
+      return p.es_interes !== true;
+    } else {
+      return p.es_interes === true;
+    }
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -359,15 +492,40 @@ function AdminPage() {
               Gestiona el catálogo. Toma fotos con tu celular y autocompleta con Inteligencia Artificial.
             </p>
           </div>
-          <Button onClick={() => handleAbrirModal()} size="lg" className="w-full sm:w-auto rounded-2xl font-bold shadow-md h-12">
+          <Button onClick={() => handleAbrirModal()} size="lg" className="w-full sm:w-auto rounded-2xl font-bold shadow-md h-12 bg-primary hover:bg-primary/90 text-white">
             <Plus className="mr-2 h-5 w-5" />
-            Nuevo Producto
+            {tabActiva === 'interes' ? 'Nueva Cotización / Interés' : 'Nuevo Producto'}
           </Button>
+        </div>
+
+        {/* Tab Selector */}
+        <div className="flex border-b border-border/50 mb-6 gap-6">
+          <button
+            onClick={() => setTabActiva('catalogo')}
+            className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 ${
+              tabActiva === 'catalogo'
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Catálogo Activo ({productos.filter(p => p.es_interes !== true).length})
+          </button>
+          
+          <button
+            onClick={() => setTabActiva('interes')}
+            className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 relative ${
+              tabActiva === 'interes'
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Lista de Interés / Cotizaciones ({productos.filter(p => p.es_interes === true).length})
+          </button>
         </div>
 
         {/* Grid of Products */}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {productos.map((producto) => {
+          {productosFiltrados.map((producto) => {
             const diasRestantes = producto.fecha_caducidad ? obtenerDiasParaVencer(producto.fecha_caducidad) : null;
             const estaVencido = diasRestantes !== null && diasRestantes < 0;
             const proximoAVencer = diasRestantes !== null && diasRestantes >= 0 && diasRestantes <= 30;
@@ -435,38 +593,78 @@ function AdminPage() {
                     )}
 
                     <div className="space-y-2 text-xs font-medium">
+                      {!producto.es_interes && (
+                        <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/40 p-2.5">
+                          <span className="text-muted-foreground">Precio de Venta:</span>
+                          <span className="font-bold text-foreground text-sm">{formatCLPCurrency(producto.precio)}</span>
+                        </div>
+                      )}
+                      
+                      {producto.precio_caja && producto.precio_caja > 0 && (
+                        <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/40 p-2.5">
+                          <span className="text-muted-foreground">Precio Caja:</span>
+                          <span className="font-bold text-indigo-500 text-sm">{formatCLPCurrency(producto.precio_caja)}</span>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/40 p-2.5">
-                        <span className="text-muted-foreground">Precio de Venta:</span>
-                        <span className="font-bold text-foreground text-sm">{formatCLPCurrency(producto.precio)}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/40 p-2.5">
-                        <span className="text-muted-foreground">Stock Actual:</span>
-                        <span className={`font-bold ${
-                          producto.stock_actual < 5 ? 'text-red-500 font-black' :
-                          producto.stock_actual < 15 ? 'text-amber-500' :
-                          'text-emerald-500'
-                        }`}>
-                          {producto.stock_actual.toFixed(2)} {producto.unidad}
+                        <span className="text-muted-foreground">{producto.es_interes ? 'Costo Cotizado:' : 'Costo Compra:'}</span>
+                        <span className="font-semibold text-foreground">
+                          {producto.costo_actual ? `${formatCLPCurrency(producto.costo_actual)}/${producto.unidad}` : 'Sin registrar'}
                         </span>
                       </div>
+
+                      {!producto.es_interes ? (
+                        <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/40 p-2.5">
+                          <span className="text-muted-foreground">Stock Actual:</span>
+                          <span className={`font-bold ${
+                            producto.stock_actual < 5 ? 'text-red-500 font-black' :
+                            producto.stock_actual < 15 ? 'text-amber-500' :
+                            'text-emerald-500'
+                          }`}>
+                            {producto.stock_actual.toFixed(2)} {producto.unidad}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-3 rounded-xl bg-indigo-500/5 border border-indigo-500/10 p-2.5">
+                          <span className="text-indigo-600 dark:text-indigo-400 font-bold">Estado:</span>
+                          <span className="font-black text-indigo-600 dark:text-indigo-400 uppercase text-[10px]">COTIZACIÓN</span>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </div>
+
+                {producto.es_interes && (
+                  <div className="px-6 pb-6 pt-0">
+                    <Button
+                      onClick={() => handleAbrirModalCompra(producto)}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-11 text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-indigo-500/10 active:scale-95 transition-all"
+                    >
+                      <ShoppingBag className="h-4 w-4" />
+                      Comprar / Abastecer Caja
+                    </Button>
+                  </div>
+                )}
               </Card>
             );
           })}
         </div>
 
-        {productos.length === 0 && (
+        {productosFiltrados.length === 0 && (
           <div className="text-center py-16 border-2 border-dashed border-border rounded-[2rem] bg-card/30">
             <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4 opacity-40" />
-            <h3 className="text-lg font-bold mb-1">Catálogo Vacío</h3>
+            <h3 className="text-lg font-bold mb-1">
+              {tabActiva === 'interes' ? 'No hay Cotizaciones' : 'Catálogo Vacío'}
+            </h3>
             <p className="text-muted-foreground text-sm mb-6 max-w-sm mx-auto">
-              Comienza agregando productos a tu catálogo.
+              {tabActiva === 'interes' 
+                ? 'Agrega productos en lista de interés para cotizar y comprar más adelante.' 
+                : 'Comienza agregando productos a tu catálogo activo.'}
             </p>
             <Button onClick={() => handleAbrirModal()} className="rounded-xl">
               <Plus className="mr-2 h-4 w-4" />
-              Crear Producto
+              {tabActiva === 'interes' ? 'Nueva Cotización' : 'Crear Producto'}
             </Button>
           </div>
         )}
@@ -477,15 +675,35 @@ function AdminPage() {
         <DialogContent className="max-h-[95vh] overflow-y-auto w-[96vw] max-w-xl rounded-[2rem] border-border/80 shadow-2xl p-5 sm:p-6">
           <DialogHeader className="space-y-1">
             <DialogTitle className="text-xl font-black tracking-tight flex items-center gap-2">
-              {editando ? 'Editar Producto' : 'Crear Producto'}
+              {editando ? 'Editar Producto' : (formData.es_interes ? 'Nueva Cotización / Interés' : 'Crear Producto')}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Saca fotos del envase para autocompletar con Gemini, o ingresa el costo y margen para calcular el precio automáticamente.
+              Saca fotos del envase para autocompletar con Gemini. Puedes guardar como interés para cotizar y comprar después.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-3">
             
+            {/* Save as Interest / Cotización Switch */}
+            <div className="p-3 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-2xl border border-indigo-500/15 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="es_interes" className="text-xs font-black text-indigo-600 dark:text-indigo-400">
+                  ¿Guardar como Interés / Cotización?
+                </Label>
+                <p className="text-[10px] text-muted-foreground">
+                  No aparecerá en el POS hasta que registres una compra de stock.
+                </p>
+              </div>
+              <input
+                id="es_interes"
+                type="checkbox"
+                checked={formData.es_interes}
+                onChange={(e) => setFormData({ ...formData, es_interes: e.target.checked })}
+                className="w-5 h-5 accent-indigo-600 border-border rounded cursor-pointer"
+                disabled={guardando || analizandoIA}
+              />
+            </div>
+
             {/* Camera Multi-capture Panel */}
             <div className="space-y-2">
               <Label className="text-xs font-bold text-foreground">Fotos del Producto ({localImages.length}/4)</Label>
@@ -638,7 +856,9 @@ function AdminPage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {/* Selling Price */}
               <div className="space-y-1.5">
-                <Label htmlFor="precio" className="text-xs font-bold text-foreground">Precio de Venta Sugerido/Final</Label>
+                <Label htmlFor="precio" className="text-xs font-bold text-foreground">
+                  Precio de Venta Sugerido/Final {formData.es_interes && '(Opcional)'}
+                </Label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
                   <Input
@@ -670,6 +890,43 @@ function AdminPage() {
                   className="h-11 rounded-xl text-[16px] md:text-sm font-semibold border-border/77"
                   disabled={guardando || analizandoIA}
                 />
+              </div>
+            </div>
+
+            {/* Box configurations */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 p-3.5 bg-purple-500/5 dark:bg-purple-500/10 rounded-2xl border border-purple-500/15">
+              <div className="space-y-1.5">
+                <Label htmlFor="cantidad_por_caja_form" className="text-xs font-bold text-purple-600 dark:text-purple-400">
+                  Cantidad por Caja (kg/unid)
+                </Label>
+                <Input
+                  id="cantidad_por_caja_form"
+                  type="number"
+                  placeholder="Ej: 12"
+                  value={formData.cantidad_por_caja}
+                  onChange={(e) => setFormData({ ...formData, cantidad_por_caja: e.target.value })}
+                  className="h-10 rounded-xl text-[16px] md:text-xs font-semibold border-purple-500/20 bg-background"
+                  disabled={guardando || analizandoIA}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="precio_caja_form" className="text-xs font-bold text-purple-600 dark:text-purple-400">
+                  Precio Venta Caja ($)
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                  <Input
+                    id="precio_caja_form"
+                    value={formData.precio_caja}
+                    onChange={(e) => setFormData({ ...formData, precio_caja: normalizeMoneyInput(e.target.value) })}
+                    onBlur={() => setFormData((current) => ({ ...current, precio_caja: current.precio_caja ? formatCLPCurrency(parseChileanMoneyInput(current.precio_caja)) : '' }))}
+                    onFocus={() => setFormData((current) => ({ ...current, precio_caja: normalizeMoneyInput(current.precio_caja) }))}
+                    className="pl-6 h-10 rounded-xl text-[16px] md:text-xs font-semibold border-purple-500/20 bg-background"
+                    placeholder="Ej: 15000"
+                    disabled={guardando || analizandoIA}
+                  />
+                </div>
               </div>
             </div>
 
@@ -713,22 +970,24 @@ function AdminPage() {
             </div>
 
             {/* Stock Initial */}
-            <div className="space-y-1.5">
-              <Label htmlFor="stock" className="text-xs font-bold text-foreground">
-                {formData.unidad === 'kg' ? 'Stock Inicial (kg)' : 'Stock Inicial (unidades)'}
-              </Label>
-              <Input
-                id="stock"
-                type="number"
-                step={formData.unidad === 'kg' ? '0.01' : '1'}
-                min="0"
-                value={formData.stock_actual}
-                onChange={(e) => setFormData({ ...formData, stock_actual: e.target.value })}
-                placeholder={formData.unidad === 'kg' ? '0.00' : '0'}
-                className="h-11 rounded-xl text-[16px] md:text-sm font-semibold border-border/77"
-                disabled={guardando || analizandoIA}
-              />
-            </div>
+            {!formData.es_interes && (
+              <div className="space-y-1.5">
+                <Label htmlFor="stock" className="text-xs font-bold text-foreground">
+                  {formData.unidad === 'kg' ? 'Stock Inicial (kg)' : 'Stock Inicial (unidades)'}
+                </Label>
+                <Input
+                  id="stock"
+                  type="number"
+                  step={formData.unidad === 'kg' ? '0.01' : '1'}
+                  min="0"
+                  value={formData.stock_actual}
+                  onChange={(e) => setFormData({ ...formData, stock_actual: e.target.value })}
+                  placeholder={formData.unidad === 'kg' ? '0.00' : '0'}
+                  className="h-11 rounded-xl text-[16px] md:text-sm font-semibold border-border/77"
+                  disabled={guardando || analizandoIA}
+                />
+              </div>
+            )}
           </div>
 
           <DialogFooter className="flex-col gap-2 sm:flex-row mt-3">
@@ -751,7 +1010,182 @@ function AdminPage() {
                   Guardando...
                 </>
               ) : (
-                editando ? 'Actualizar' : 'Crear Producto'
+                editando ? 'Actualizar' : (formData.es_interes ? 'Registrar Cotización' : 'Crear Producto')
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* COMPRAR / ABASTECER MODAL */}
+      <Dialog open={modalCompraOpen} onOpenChange={(open) => !guardando && setModalCompraOpen(open)}>
+        <DialogContent className="max-h-[95vh] overflow-y-auto w-[96vw] max-w-xl rounded-[2rem] border-border/80 shadow-2xl p-5 sm:p-6">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-xl font-black tracking-tight flex items-center gap-2">
+              <ShoppingBag className="h-5 w-5 text-indigo-500" />
+              Comprar / Abastecer Inventario
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Registra el stock recibido en cajas y actualiza el costo y precios del producto en el catálogo.
+            </DialogDescription>
+          </DialogHeader>
+
+          {productoCompra && (
+            <div className="space-y-4 py-3">
+              <div className="rounded-xl bg-muted/30 p-3.5 border border-border/40 flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-sm text-foreground">{productoCompra.nombre}</h4>
+                  <p className="text-[10px] text-muted-foreground font-semibold uppercase mt-0.5">
+                    Unidad: {productoCompra.unidad === 'kg' ? 'Kilo' : 'Unidad'}
+                  </p>
+                </div>
+                <Badge variant="secondary" className="font-bold text-xs h-7 px-2.5">
+                  Stock actual: {productoCompra.stock_actual.toFixed(2)}
+                </Badge>
+              </div>
+
+              {/* Box info & Purchase quantity */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cantidad_por_caja" className="text-xs font-bold text-foreground">Cant. por Caja ({productoCompra.unidad})</Label>
+                  <Input
+                    id="cantidad_por_caja"
+                    type="number"
+                    value={compraData.cantidad_por_caja}
+                    onChange={(e) => handleCompraCajaChange('cantidad_por_caja', e.target.value)}
+                    className="rounded-xl h-11 text-[16px] md:text-sm font-semibold border-border/70 bg-background"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cajas_compradas" className="text-xs font-bold text-foreground">Cajas Recibidas</Label>
+                  <Input
+                    id="cajas_compradas"
+                    type="number"
+                    min="1"
+                    placeholder="Ej: 5"
+                    value={compraData.cajas_compradas}
+                    onChange={(e) => handleCompraCajaChange('cajas_compradas', e.target.value)}
+                    className="rounded-xl h-11 text-[16px] md:text-sm font-semibold border-border/70 bg-background"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="costo_caja" className="text-xs font-bold text-foreground">Costo por Caja ($)</Label>
+                  <Input
+                    id="costo_caja"
+                    type="number"
+                    min="0"
+                    placeholder="Ej: 10000"
+                    value={compraData.costo_caja}
+                    onChange={(e) => handleCompraCajaChange('costo_caja', e.target.value)}
+                    className="rounded-xl h-11 text-[16px] md:text-sm font-semibold border-border/70 bg-background"
+                  />
+                </div>
+              </div>
+
+              {/* Suggested unit calculations */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 p-3.5 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-2xl border border-indigo-500/15">
+                <div className="space-y-1.5">
+                  <Label htmlFor="compra_margen" className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                    <Percent className="h-3.5 w-3.5" />
+                    Margen Unidad (%)
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="compra_margen"
+                      type="number"
+                      value={compraData.margen_deseado}
+                      onChange={(e) => handleCompraCajaChange('margen_deseado', e.target.value)}
+                      className="pr-7 h-10 rounded-xl text-[16px] md:text-xs font-bold text-center border-indigo-500/20 bg-background"
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-black">%</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="precio_venta_unidad" className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                    Precio Venta por {productoCompra.unidad === 'kg' ? 'Kilo' : 'Unidad'}
+                  </Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                    <Input
+                      id="precio_venta_unidad"
+                      value={compraData.precio_venta_unidad}
+                      onChange={(e) => setCompraData({ ...compraData, precio_venta_unidad: normalizeMoneyInput(e.target.value) })}
+                      onBlur={() => setCompraData(c => ({ ...c, precio_venta_unidad: c.precio_venta_unidad ? formatCLPCurrency(parseChileanMoneyInput(c.precio_venta_unidad)) : '' }))}
+                      onFocus={() => setCompraData(c => ({ ...c, precio_venta_unidad: normalizeMoneyInput(c.precio_venta_unidad) }))}
+                      className="pl-6 h-10 rounded-xl text-[16px] md:text-xs font-bold border-indigo-500/20 bg-background"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Box pricing calculations */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 p-3.5 bg-purple-500/5 dark:bg-purple-500/10 rounded-2xl border border-purple-500/15">
+                <div className="space-y-1.5">
+                  <Label htmlFor="compra_margen_caja" className="text-xs font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1">
+                    <Percent className="h-3.5 w-3.5" />
+                    Margen Caja (%) (Opcional)
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="compra_margen_caja"
+                      type="number"
+                      value={compraData.margen_caja}
+                      onChange={(e) => handleCompraCajaChange('margen_caja', e.target.value)}
+                      className="pr-7 h-10 rounded-xl text-[16px] md:text-xs font-bold text-center border-purple-500/20 bg-background"
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-black">%</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="precio_venta_caja" className="text-xs font-bold text-purple-600 dark:text-purple-400">
+                    Precio Venta por Caja
+                  </Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                    <Input
+                      id="precio_venta_caja"
+                      value={compraData.precio_venta_caja}
+                      onChange={(e) => setCompraData({ ...compraData, precio_venta_caja: normalizeMoneyInput(e.target.value) })}
+                      onBlur={() => setCompraData(c => ({ ...c, precio_venta_caja: c.precio_venta_caja ? formatCLPCurrency(parseChileanMoneyInput(c.precio_venta_caja)) : '' }))}
+                      onFocus={() => setCompraData(c => ({ ...c, precio_venta_caja: normalizeMoneyInput(c.precio_venta_caja) }))}
+                      className="pl-6 h-10 rounded-xl text-[16px] md:text-xs font-bold border-purple-500/20 bg-background"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Equivalency note */}
+              {parseFloat(compraData.cajas_compradas) > 0 && parseFloat(compraData.cantidad_por_caja) > 0 && (
+                <div className="p-3 bg-indigo-500/5 rounded-xl text-xs text-indigo-600 dark:text-indigo-400 font-bold border border-indigo-500/10">
+                  Resumen de Ingreso: {(parseFloat(compraData.cajas_compradas) * parseFloat(compraData.cantidad_por_caja)).toFixed(2)} {productoCompra.unidad} de stock, costo de compra unitario equivalente: {formatCLPCurrency(parseFloat(compraData.costo_caja) / parseFloat(compraData.cantidad_por_caja))}/{productoCompra.unidad}.
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="flex-col gap-2 sm:flex-row mt-3">
+            <Button 
+              variant="outline" 
+              onClick={() => setModalCompraOpen(false)}
+              disabled={guardando}
+              className="rounded-xl text-xs h-11 w-full sm:w-auto"
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleGuardarCompra}
+              disabled={guardando}
+              className="rounded-xl text-xs bg-indigo-600 hover:bg-indigo-700 text-white h-11 w-full sm:w-auto font-bold"
+            >
+              {guardando ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                'Finalizar Compra y Activar'
               )}
             </Button>
           </DialogFooter>

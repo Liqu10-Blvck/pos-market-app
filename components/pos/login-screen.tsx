@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { FieldGroup, Field, FieldLabel } from "@/components/ui/field"
 import { LogIn, AlertCircle } from "lucide-react"
 import { BrandLogo } from "@/components/ui/brand-logo"
+import Link from "next/link"
 
 export function LoginScreen() {
   const { login } = useAuth()
@@ -83,6 +84,13 @@ export function LoginScreen() {
               <LogIn className="mr-2 size-4" />
               {isLoading ? "Ingresando..." : "Ingresar"}
             </Button>
+
+            <div className="mt-4 text-center">
+              <span className="text-xs text-muted-foreground">¿No tienes cuenta? </span>
+              <Link href="/registro" className="text-xs font-bold text-primary hover:underline transition-all">
+                Regístrate aquí
+              </Link>
+            </div>
           </form>
 
         </CardContent>

@@ -13,8 +13,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { useToast } from '@/hooks/use-toast';
 import { formatCLPCurrency, normalizeMoneyInput, parseChileanMoneyInput } from '@/lib/utils';
 import { Plus, UserPlus, Users, Search, Phone, History, CreditCard } from 'lucide-react';
+import { ProtectedRoute } from '@/components/layout/protected-route';
 
-export default function ClientesPage() {
+function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -244,5 +245,13 @@ export default function ClientesPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <ProtectedRoute>
+      <ClientesPage />
+    </ProtectedRoute>
   );
 }

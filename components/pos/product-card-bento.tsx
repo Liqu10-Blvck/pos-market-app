@@ -5,14 +5,13 @@ import { Producto } from '@/lib/types/pos';
 import { Badge } from '@/components/ui/badge';
 import { formatCLPCurrency } from '@/lib/utils';
 import { AlertCircle, Package } from 'lucide-react';
+import { getProductAsset } from '@/lib/constants/product-assets';
 
 interface ProductCardBentoProps {
   producto: Producto;
   onSelect: (producto: Producto) => void;
   index: number;
 }
-
-import { getProductAsset } from '@/lib/constants/product-assets';
 
 export function ProductCardBento({ producto, onSelect, index }: ProductCardBentoProps) {
   const isLowStock = producto.stock_actual < 10;

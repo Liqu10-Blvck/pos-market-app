@@ -48,7 +48,7 @@ export class TicketGenerator {
       const nombreLimpio = item.nombre.length > 25 ? item.nombre.substring(0, 22) + '...' : item.nombre;
       ticket += nombreLimpio.toUpperCase() + '\n';
       
-      const netoStr = item.unidad === 'kg' ? item.neto.toFixed(3) : item.neto.toString();
+      const netoStr = item.unidad === 'kg' ? item.neto.toFixed(2) : item.neto.toString();
       const detalleCant = `${netoStr} ${item.unidad} x ${formatCLPCurrency(item.precio_unitario)}`;
       const subtotal = formatCLPCurrency(item.total);
       

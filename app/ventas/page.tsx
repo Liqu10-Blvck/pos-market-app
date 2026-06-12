@@ -6,10 +6,10 @@ import { db } from '@/lib/firebase';
 import { Producto, CarritoItem, ItemVenta, MetodoPago, Cliente } from '@/lib/types/pos';
 import { VentasService } from '@/lib/services/ventas.service';
 import { SesionService } from '@/lib/services/sesion.service';
-import { ProductCardBento } from '@/components/pos-premium/product-card-bento';
-import { WeightModalPremium } from '@/components/pos-premium/weight-modal-premium';
-import { CartPremium } from '@/components/pos-premium/cart-premium';
-import { PaymentDrawer } from '@/components/pos-premium/payment-drawer';
+import { ProductCardBento } from '@/components/pos/product-card-bento';
+import { WeightModal } from '@/components/pos/weight-modal';
+import { Cart } from '@/components/pos/cart';
+import { PaymentDrawer } from '@/components/pos/payment-drawer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -18,8 +18,9 @@ import { formatCLPCurrency } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingCart, DollarSign, Search, Wifi, WifiOff, Package } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { ProtectedRoute } from '@/components/layout/protected-route';
 
-export default function VentasPage() {
+function VentasPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [carrito, setCarrito] = useState<CarritoItem[]>([]);
   const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
@@ -211,7 +212,7 @@ export default function VentasPage() {
         {/* Sidebar Cart */}
         <aside className="hidden w-80 2xl:w-96 flex-col lg:flex border-l border-border/40 relative bg-background overflow-hidden h-[calc(100vh-80px)]">
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <CartPremium items={carrito} onEliminarItem={handleEliminarItem} />
+            <Cart items={carrito} onEliminarItem={handleEliminarItem} />
           </div>
           
           <div className="p-5 border-t border-border/40 bg-muted/10">
@@ -251,8 +252,16 @@ export default function VentasPage() {
           </Button>
       </div>
 
-      <WeightModalPremium producto={productoSeleccionado} open={modalPesajeOpen} onClose={() => setModalPesajeOpen(false)} onAgregar={handleAgregarAlCarrito} />
+      <WeightModal producto={productoSeleccionado} open={modalPesajeOpen} onClose={() => setModalPesajeOpen(false)} onAgregar={handleAgregarAlCarrito} />
       <PaymentDrawer open={modalPagoOpen} onOpenChange={setModalPagoOpen} items={carrito} total={totalCarrito} clientes={clientes} onConfirm={handleProcesarVenta} procesando={procesando} />
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <ProtectedRoute>
+      <VentasPage />
+    </ProtectedRoute>
   );
 }

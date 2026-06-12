@@ -67,16 +67,16 @@ export function PaymentDrawer({
               <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
                 Resumen de Compra
               </h3>
-              {items.map((item, idx) => (
+              {items.map((item) => (
                 <div key={item.temp_id} className="flex flex-col gap-2 rounded-xl bg-muted/30 p-3 dark:bg-muted/10 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-foreground dark:text-white">{item.nombre}</p>
                     <p className="text-sm text-muted-foreground">
-                      {item.unidad === 'kg' ? item.neto.toFixed(3) : item.neto.toFixed(0)} {item.unidad} × {formatCLPCurrency(item.precio_unitario)}
+                      {item.unidad === 'kg' ? item.neto.toFixed(2) : item.neto.toFixed(0)} {item.unidad} × {formatCLPCurrency(item.precio_unitario)}
                     </p>
                     {item.unidad === 'kg' && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        Bruto: {(item.peso_bruto || 0).toFixed(3)}kg | Tara: {(item.tara || 0).toFixed(3)}kg
+                        Bruto: {(item.peso_bruto || 0).toFixed(2)}kg | Tara: {(item.tara || 0).toFixed(2)}kg
                       </p>
                     )}
                   </div>

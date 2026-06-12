@@ -14,7 +14,9 @@ import { ShoppingCart, Package, History, DollarSign, TrendingUp, Users, ArrowRig
 import { motion } from 'framer-motion';
 import { BrandLogo } from '@/components/ui/brand-logo';
 
-export default function InicioPage() {
+import { ProtectedRoute } from '@/components/layout/protected-route';
+
+function InicioPage() {
   const [sesionActiva, setSesionActiva] = useState<SesionCaja | null>(null);
   const [resumenSesion, setResumenSesion] = useState<any>(null);
   const [cargando, setCargando] = useState(true);
@@ -55,6 +57,13 @@ export default function InicioPage() {
       icon: Package, 
       href: '/admin', 
       color: 'bg-purple-500' 
+    },
+    { 
+      title: 'Costos y Margen', 
+      desc: 'Cotizaciones y sugerencias de precios', 
+      icon: TrendingUp, 
+      href: '/costos', 
+      color: 'bg-indigo-500' 
     },
     { 
       title: 'Clientes', 
@@ -106,7 +115,7 @@ export default function InicioPage() {
           <div className="flex flex-wrap gap-3">
              <div className="flex items-center gap-2 rounded-2xl bg-card p-2 pr-4 shadow-sm border border-border/40">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-500/10 text-green-600 dark:text-green-500">
-                  <Target className="h-5 w-5" />
+                   <Target className="h-5 w-5" />
                 </div>
                 <div>
                   <div className="text-[10px] font-black text-muted-foreground uppercase leading-none opacity-60">Ventas Hoy</div>
@@ -217,5 +226,13 @@ export default function InicioPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <ProtectedRoute>
+      <InicioPage />
+    </ProtectedRoute>
   );
 }

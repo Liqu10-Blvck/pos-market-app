@@ -4,17 +4,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CarritoItem } from '@/lib/types/pos';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, ShoppingBag, ShoppingCart, Package } from 'lucide-react';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Trash2, ShoppingCart, Package } from 'lucide-react';
 import { formatCLPCurrency } from '@/lib/utils';
 import { getProductAsset } from '@/lib/constants/product-assets';
 
-interface CartPremiumProps {
+interface CartProps {
   items: CarritoItem[];
   onEliminarItem: (tempId: string) => void;
 }
 
-export function CartPremium({ items, onEliminarItem }: CartPremiumProps) {
+export function Cart({ items, onEliminarItem }: CartProps) {
   const total = items.reduce((sum, item) => sum + item.total, 0);
 
   if (items.length === 0) {
@@ -69,7 +68,7 @@ export function CartPremium({ items, onEliminarItem }: CartPremiumProps) {
                         {item.unidad === 'kg' ? 'PESO' : 'UNID'}
                       </Badge>
                       <span className="text-xs font-medium text-muted-foreground">
-                        {formatCLPCurrency(item.precio_unitario)} × {item.unidad === 'kg' ? item.neto.toFixed(3) : item.neto.toFixed(0)} {item.unidad}
+                        {formatCLPCurrency(item.precio_unitario)} × {item.unidad === 'kg' ? item.neto.toFixed(2) : item.neto.toFixed(0)} {item.unidad}
                       </span>
                     </div>
                   </div>
@@ -92,7 +91,7 @@ export function CartPremium({ items, onEliminarItem }: CartPremiumProps) {
                     <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Subtotal</p>
                     <p className="text-base font-black text-primary drop-shadow-sm">{formatCLPCurrency(item.total)}</p>
                   </div>
-                  <span className="text-[10px] text-muted-foreground font-bold bg-muted/30 px-2 py-0.5 rounded-md border border-border/10">NETO: {item.unidad === 'kg' ? item.neto.toFixed(3) : item.neto.toFixed(0)} {item.unidad}</span>
+                  <span className="text-[10px] text-muted-foreground font-bold bg-muted/30 px-2 py-0.5 rounded-md border border-border/10">NETO: {item.unidad === 'kg' ? item.neto.toFixed(2) : item.neto.toFixed(0)} {item.unidad}</span>
                 </div>
               </motion.div>
             ))}

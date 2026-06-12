@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, getDocs, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Venta, SesionCaja } from '@/lib/types/pos';
 import { AppNav } from '@/components/layout/app-nav';
@@ -13,8 +13,9 @@ import { formatCLPCurrency } from '@/lib/utils';
 import { History, Printer, DollarSign, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { ProtectedRoute } from '@/components/layout/protected-route';
 
-export default function HistorialPage() {
+function HistorialPage() {
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [sesiones, setSesiones] = useState<SesionCaja[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -25,25 +26,29 @@ export default function HistorialPage() {
 
   const cargarDatos = async () => {
     try {
-      const ventasSnapshot = await getDocs(collection(db, 'ventas'));
+      const ventasQuery = query(
+        collection(db, 'ventas'),
+        orderBy('fecha', 'desc'),
+        limit(50)
+      );
+      const ventasSnapshot = await getDocs(ventasQuery);
       const ventasData = ventasSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Venta[];
-      const ventasOrdenadas = ventasData
-        .sort((a, b) => b.fecha.toMillis() - a.fecha.toMillis())
-        .slice(0, 50);
-      setVentas(ventasOrdenadas);
+      setVentas(ventasData);
 
-      const sesionesSnapshot = await getDocs(collection(db, 'sesiones_caja'));
+      const sesionesQuery = query(
+        collection(db, 'sesiones_caja'),
+        orderBy('fecha_apertura', 'desc'),
+        limit(10)
+      );
+      const sesionesSnapshot = await getDocs(sesionesQuery);
       const sesionesData = sesionesSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as SesionCaja[];
-      const sesionesOrdenadas = sesionesData
-        .sort((a, b) => b.fecha_apertura.toMillis() - a.fecha_apertura.toMillis())
-        .slice(0, 10);
-      setSesiones(sesionesOrdenadas);
+      setSesiones(sesionesData);
 
     } catch (error) {
       console.error('Error al cargar datos:', error);
@@ -175,7 +180,7 @@ export default function HistorialPage() {
                         {venta.items.map((item, idx) => (
                           <div key={idx} className="flex flex-col gap-1 text-sm sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                             <span className="text-muted-foreground break-words">
-                              {item.nombre} ({item.unidad === 'kg' ? item.neto.toFixed(3) : item.neto} {item.unidad})
+                              {item.nombre} ({item.unidad === 'kg' ? item.neto.toFixed(2) : item.neto} {item.unidad})
                             </span>
                             <span className="sm:text-right">{formatCLPCurrency(item.total)}</span>
                           </div>
@@ -294,5 +299,13 @@ export default function HistorialPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <ProtectedRoute>
+      <HistorialPage />
+    </ProtectedRoute>
   );
 }

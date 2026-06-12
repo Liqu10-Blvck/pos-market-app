@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { signInWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged } from "firebase/auth"
 import { auth } from "./firebase"
-import type { User } from "./pos-types"
+import type { User } from "./types/pos"
 
 interface AuthContextType {
   user: User | null

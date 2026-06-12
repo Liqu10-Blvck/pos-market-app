@@ -41,13 +41,13 @@ export class VentasService {
         clienteSnap = await transaction.get(doc(db, this.CLIENTES_COLLECTION, clienteId));
       }
 
-      // Calculate sale number (Note: This is outside transaction.get but inside the block)
-      // This is still inefficient but solves the ordering issue for now.
-      const ventasSnapshot = await getDocs(collection(db, this.COLLECTION));
-      const ultimoNumeroVenta = ventasSnapshot.docs.reduce((max, ventaDoc) => {
-        const numero = ventaDoc.data().numero_venta || 0;
-        return numero > max ? numero : max;
-      }, 0);
+      // Read metadata for sale number transactionally
+      const metadataRef = doc(db, 'metadata', 'ventas');
+      const metadataSnap = await transaction.get(metadataRef);
+      let ultimoNumeroVenta = 0;
+      if (metadataSnap.exists()) {
+        ultimoNumeroVenta = metadataSnap.data().ultimo_numero_venta || 0;
+      }
       const numeroVenta = ultimoNumeroVenta + 1;
 
       // 2. ALL WRITES AFTER
@@ -85,6 +85,9 @@ export class VentasService {
           updatedAt: Timestamp.now()
         });
       }
+
+      // Update metadata count
+      transaction.set(metadataRef, { ultimo_numero_venta: numeroVenta }, { merge: true });
 
       const ventaRef = doc(collection(db, this.COLLECTION));
       const ventaData: Omit<Venta, 'id'> = {
@@ -157,7 +160,7 @@ export class VentasService {
 
   static calcularNeto(pesoBruto: number, tara: number): number {
     const neto = pesoBruto - tara;
-    return Math.max(0, Number(neto.toFixed(3)));
+    return Math.max(0, Number(neto.toFixed(2)));
   }
 
   static calcularTotal(neto: number, precioUnitario: number): number {

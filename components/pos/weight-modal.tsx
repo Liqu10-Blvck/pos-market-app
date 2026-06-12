@@ -8,17 +8,17 @@ import { Producto, ItemVenta } from '@/lib/types/pos';
 import { VentasService } from '@/lib/services/ventas.service';
 import { formatCLPCurrency } from '@/lib/utils';
 import { NumericKeypad } from './numeric-keypad';
-import { ShoppingCart, AlertCircle, X } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
-interface WeightModalPremiumProps {
+interface WeightModalProps {
   producto: Producto | null;
   open: boolean;
   onClose: () => void;
   onAgregar: (item: ItemVenta) => void;
 }
 
-export function WeightModalPremium({ producto, open, onClose, onAgregar }: WeightModalPremiumProps) {
+export function WeightModal({ producto, open, onClose, onAgregar }: WeightModalProps) {
   const [activeInput, setActiveInput] = useState<'bruto' | 'tara' | 'cantidad' | 'precio'>('bruto');
   const [pesoBruto, setPesoBruto] = useState('');
   const [tara, setTara] = useState('');
@@ -171,7 +171,7 @@ export function WeightModalPremium({ producto, open, onClose, onAgregar }: Weigh
 
             <div className="flex items-center justify-between px-2 text-sm font-bold border-b border-border/20 pb-3 mb-2">
               <div className="text-muted-foreground flex gap-1 items-center">
-                Neto: <span className="text-foreground">{neto.toFixed(esKg ? 3 : 0)} {unitLabel}</span>
+                Neto: <span className="text-foreground">{neto.toFixed(esKg ? 2 : 0)} {unitLabel}</span>
               </div>
               <div className="text-muted-foreground flex gap-1 items-center">
                 Total: <span className="text-primary text-xl font-black">{formatCLPCurrency(total)}</span>
@@ -183,7 +183,7 @@ export function WeightModalPremium({ producto, open, onClose, onAgregar }: Weigh
             <NumericKeypad
               value={getCurrentValue()}
               onChange={handleValueChange}
-              maxDecimals={activeInput === 'precio' ? 0 : (esKg ? 3 : 0)}
+              maxDecimals={activeInput === 'precio' ? 0 : (esKg ? 2 : 0)}
             />
           </div>
 

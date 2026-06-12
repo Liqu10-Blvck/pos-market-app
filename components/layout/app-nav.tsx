@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, ShoppingCart, Package, History, LogOut, Users, Sun, Moon } from 'lucide-react'
+import { Home, ShoppingCart, Package, History, LogOut, Users, Sun, Moon, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/auth-context'
 import { motion } from 'framer-motion'
@@ -13,6 +13,7 @@ const items = [
   { href: '/inicio', label: 'Inicio', icon: Home },
   { href: '/ventas', label: 'Ventas', icon: ShoppingCart },
   { href: '/admin', label: 'Productos', icon: Package },
+  { href: '/costos', label: 'Costos', icon: TrendingUp },
   { href: '/clientes', label: 'Clientes', icon: Users },
   { href: '/historial', label: 'Historial', icon: History },
 ]

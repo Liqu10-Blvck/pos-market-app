@@ -11,6 +11,10 @@ export interface Producto {
   stock_actual: number;
   imagen_url?: string;
   activo?: boolean;
+  costo_actual?: number;
+  margen_deseado?: number;
+  sku?: string;
+  fecha_caducidad?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -71,4 +75,20 @@ export interface SesionCaja {
 
 export interface CarritoItem extends ItemVenta {
   temp_id: string;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'cashier';
+}
+
+export interface CostoDiario {
+  id: string;
+  producto_id: string;
+  nombre: string;
+  costo: number;
+  fecha: Timestamp;
+  createdAt: Timestamp;
 }

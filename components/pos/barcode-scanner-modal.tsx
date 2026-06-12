@@ -39,6 +39,14 @@ export function BarcodeScannerModal({
       const initScanner = async () => {
         try {
           if (!isMounted) return;
+
+          const readerElement = document.getElementById("reader");
+          if (!readerElement) {
+            // Poll until element is present in the DOM
+            setTimeout(initScanner, 50);
+            return;
+          }
+
           setCameraPermission('pending');
           setIsScanning(false);
 
@@ -210,7 +218,7 @@ export function BarcodeScannerModal({
                   {/* Container for html5-qrcode video mounting */}
                   <div 
                     id="reader" 
-                    className="w-full h-full overflow-hidden [&>video]:!w-full [&>video]:!h-full [&>video]:!object-cover"
+                    className="w-full h-full overflow-hidden [&_video]:!w-full [&_video]:!h-full [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full"
                   />
 
                   {/* Pending state overlay */}

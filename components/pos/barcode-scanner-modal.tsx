@@ -59,6 +59,13 @@ export function BarcodeScannerModal({
 
           const config = {
             fps: 15, // High frame rate for fast scanner responsiveness
+            qrbox: (width: number, height: number) => {
+              // Focus scanning exactly in the center matching our green overlay (280x160)
+              return {
+                width: Math.min(width, 280),
+                height: Math.min(height, 160)
+              };
+            },
             formatsToSupport: [
               Html5QrcodeSupportedFormats.EAN_13,
               Html5QrcodeSupportedFormats.EAN_8,
@@ -66,12 +73,19 @@ export function BarcodeScannerModal({
               Html5QrcodeSupportedFormats.UPC_E,
               Html5QrcodeSupportedFormats.CODE_128,
               Html5QrcodeSupportedFormats.CODE_39
-            ]
+            ],
+            experimentalFeatures: {
+              useBarCodeDetectorIfSupported: true
+            }
           };
 
           try {
             await html5QrCode.start(
-              { facingMode: "environment" },
+              { 
+                facingMode: "environment",
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+              },
               config,
               (decodedText: string) => {
                 handleCodeFound(decodedText);
@@ -82,7 +96,11 @@ export function BarcodeScannerModal({
             console.warn("Fallo al iniciar con cámara trasera, intentando frontal:", startErr);
             try {
               await html5QrCode.start(
-                { facingMode: "user" },
+                { 
+                  facingMode: "user",
+                  width: { ideal: 1280 },
+                  height: { ideal: 720 }
+                },
                 config,
                 (decodedText: string) => {
                   handleCodeFound(decodedText);

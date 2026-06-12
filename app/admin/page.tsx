@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot, doc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, addDoc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { uploadImage } from '@/lib/firebase/storage';
 import { Producto } from '@/lib/types/pos';
@@ -224,7 +224,9 @@ function AdminPage() {
   };
 
   const handleGuardar = async () => {
+    console.log('handleGuardar: Iniciando guardado...', formData);
     if (!formData.nombre || !formData.precio || !formData.stock_actual) {
+      console.log('handleGuardar: Campos obligatorios incompletos!');
       toast({
         title: 'Campos incompletos',
         description: 'El nombre, precio (venta) y stock son requeridos.',
@@ -236,59 +238,82 @@ function AdminPage() {
     setGuardando(true);
     try {
       let productoId = editando?.id;
-      let isNew = false;
-      let productRef;
+      const isNew = !productoId;
+      console.log('handleGuardar: Modo:', isNew ? 'NUEVO' : 'EDICIÓN', 'ID:', productoId);
 
-      if (!productoId) {
-        isNew = true;
-        const newRef = doc(collection(db, 'productos'));
-        productoId = newRef.id;
-        productRef = newRef;
-      } else {
-        productRef = doc(db, 'productos', productoId);
-      }
+      // Conversión y saneamiento seguro
+      const parsedPrecio = parseChileanMoneyInput(formData.precio);
+      const parsedStock = parseFloat(formData.stock_actual) || 0;
+      const parsedCosto = formData.costo ? parseFloat(formData.costo) : null;
+      const parsedMargen = formData.margen ? parseFloat(formData.margen) : null;
+      const cleanSku = (formData.sku || '').trim() || null;
+      const cleanFecha = formData.fecha_caducidad || null;
 
-      // Upload image to Storage if present
-      let finalImageUrl = editando?.imagen_url || '';
-      const newLocalImage = localImages.find(img => img.file !== null);
-
-      if (newLocalImage && newLocalImage.file) {
-        finalImageUrl = await uploadImage(`productos/${productoId}/imagen.jpg`, newLocalImage.file);
-      } else if (localImages.length === 0) {
-        finalImageUrl = '';
-      }
+      console.log('handleGuardar: Parámetros saneados:', { parsedPrecio, parsedStock, parsedCosto, parsedMargen, cleanSku, cleanFecha });
 
       const productoData = {
         nombre: formData.nombre,
-        precio: parseChileanMoneyInput(formData.precio),
+        precio: parsedPrecio,
         unidad: formData.unidad,
-        stock_actual: parseFloat(formData.stock_actual),
-        sku: formData.sku.trim() || null,
-        fecha_caducidad: formData.fecha_caducidad || null,
-        costo_actual: formData.costo ? parseFloat(formData.costo) : null,
-        margen_deseado: formData.margen ? parseFloat(formData.margen) : null,
-        imagen_url: finalImageUrl || null,
+        stock_actual: parsedStock,
+        sku: cleanSku,
+        fecha_caducidad: cleanFecha,
+        costo_actual: parsedCosto,
+        margen_deseado: parsedMargen,
         activo: true,
         updatedAt: Timestamp.now()
       };
 
       if (isNew) {
-        await setDoc(productRef, {
+        console.log('handleGuardar: Creando producto en Firestore...');
+        // 1. Crear documento primero
+        const docRef = await addDoc(collection(db, 'productos'), {
           ...productoData,
+          imagen_url: null,
           createdAt: Timestamp.now()
         });
+        productoId = docRef.id;
+        console.log('handleGuardar: Documento creado. ID asignado:', productoId);
+
+        // 2. Subir imagen si se seleccionó una localmente
+        const newLocalImage = localImages.find(img => img.file !== null);
+        if (newLocalImage && newLocalImage.file) {
+          console.log('handleGuardar: Subiendo imagen para nuevo producto...');
+          const finalImageUrl = await uploadImage(`productos/${productoId}/imagen.jpg`, newLocalImage.file);
+          console.log('handleGuardar: Imagen subida con éxito:', finalImageUrl);
+          await updateDoc(docRef, { imagen_url: finalImageUrl });
+        }
         toast({ title: 'Producto creado' });
       } else {
-        await updateDoc(productRef, productoData);
+        console.log('handleGuardar: Actualizando producto en Firestore. ID:', productoId);
+        const docRef = doc(db, 'productos', productoId);
+        
+        let finalImageUrl = editando?.imagen_url || '';
+        const newLocalImage = localImages.find(img => img.file !== null);
+
+        if (newLocalImage && newLocalImage.file) {
+          console.log('handleGuardar: Subiendo nueva imagen para producto existente...');
+          finalImageUrl = await uploadImage(`productos/${productoId}/imagen.jpg`, newLocalImage.file);
+          console.log('handleGuardar: Imagen actualizada con éxito:', finalImageUrl);
+        } else if (localImages.length === 0) {
+          console.log('handleGuardar: El usuario eliminó la imagen.');
+          finalImageUrl = '';
+        }
+
+        await updateDoc(docRef, {
+          ...productoData,
+          imagen_url: finalImageUrl || null
+        });
         toast({ title: 'Producto actualizado' });
       }
 
+      console.log('handleGuardar: Finalizado exitosamente.');
       setModalOpen(false);
     } catch (error: any) {
-      console.error(error);
+      console.error('handleGuardar: ERROR al guardar:', error);
       toast({
         title: 'Error al guardar',
-        description: error.message,
+        description: error.message || 'Error desconocido al guardar.',
         variant: 'destructive'
       });
     } finally {

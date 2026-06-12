@@ -61,16 +61,43 @@ export function BarcodeScannerModal({
             ]
           };
 
-          await html5QrCode.start(
-            { facingMode: "environment" },
-            config,
-            (decodedText: string) => {
-              handleCodeFound(decodedText);
-            },
-            () => {
-              // Ignore frame-by-frame parse errors
+          try {
+            await html5QrCode.start(
+              { facingMode: "environment" },
+              config,
+              (decodedText: string) => {
+                handleCodeFound(decodedText);
+              },
+              () => {}
+            );
+          } catch (startErr) {
+            console.warn("Fallo al iniciar con cámara trasera, intentando frontal:", startErr);
+            try {
+              await html5QrCode.start(
+                { facingMode: "user" },
+                config,
+                (decodedText: string) => {
+                  handleCodeFound(decodedText);
+                },
+                () => {}
+              );
+            } catch (userErr) {
+              console.warn("Fallo al iniciar con cámara frontal, intentando con primer ID disponible:", userErr);
+              const devices = await Html5Qrcode.getCameras();
+              if (devices && devices.length > 0) {
+                await html5QrCode.start(
+                  devices[0].id,
+                  config,
+                  (decodedText: string) => {
+                    handleCodeFound(decodedText);
+                  },
+                  () => {}
+                );
+              } else {
+                throw new Error("No se encontraron cámaras de video en este dispositivo.");
+              }
             }
-          );
+          }
 
           if (isMounted) {
             setCameraPermission('granted');
@@ -183,7 +210,7 @@ export function BarcodeScannerModal({
                   {/* Container for html5-qrcode video mounting */}
                   <div 
                     id="reader" 
-                    className="w-full h-full overflow-hidden [&>video]:w-full [&>video]:h-full [&>video]:object-cover"
+                    className="w-full h-full overflow-hidden [&>video]:!w-full [&>video]:!h-full [&>video]:!object-cover"
                   />
 
                   {/* Pending state overlay */}

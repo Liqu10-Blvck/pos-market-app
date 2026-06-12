@@ -195,11 +195,8 @@ export function PaymentDrawer({
 
             {/* Cash Input Form for Efectivo */}
             {metodoPago === 'efectivo' && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="space-y-4 rounded-2xl border border-border/85 bg-muted/20 p-4 dark:bg-muted/10 overflow-hidden"
+              <div
+                className="space-y-4 rounded-2xl border border-border/85 bg-muted/20 p-4 dark:bg-muted/10"
               >
                 <div className="space-y-1.5">
                   <Label htmlFor="monto_efectivo" className="text-xs font-black text-muted-foreground uppercase tracking-wide">
@@ -259,7 +256,7 @@ export function PaymentDrawer({
                     </span>
                   </div>
                 )}
-              </motion.div>
+              </div>
             )}
 
             {/* Client Selection for Fiado */}

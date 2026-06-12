@@ -32,6 +32,7 @@ import {
   ShoppingBag
 } from 'lucide-react';
 import { ProtectedRoute } from '@/components/layout/protected-route';
+import { Badge } from '@/components/ui/badge';
 
 interface LocalImage {
   file: File | null;

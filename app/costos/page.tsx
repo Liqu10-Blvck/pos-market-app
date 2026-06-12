@@ -348,7 +348,7 @@ function CostosPage() {
   const handleGenerarLiquidacionVencimientos = async () => {
     const vencidosONear = productosConVencimiento.filter(p => {
       const dias = obtenerDiasParaVencer(p.fecha_caducidad!);
-      return dias <= 30; // Expired or expiring within 30 days
+      return dias <= 30;
     });
 
     if (vencidosONear.length === 0) {
@@ -390,7 +390,7 @@ ${vencidosONear.map(p => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          productos: [], // we pass the prompt custom context manually
+          productos: [], 
           contexto: promptContext
         }),
       });
@@ -467,16 +467,16 @@ ${vencidosONear.map(p => {
   return (
     <div className="min-h-screen bg-background">
       <AppNav />
-      <div className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
         
         {/* Page Header */}
-        <header className="mb-8 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <header className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-indigo-500">
               <TrendingUp className="h-4 w-4" />
               <span className="text-xs font-black uppercase tracking-widest">Pricing & Inventario</span>
             </div>
-            <h1 className="text-2xl font-black text-foreground sm:text-3xl tracking-tight">
+            <h1 className="text-2xl font-black text-foreground sm:text-3xl tracking-tight leading-tight">
               Control de Costos, Precios y Caducidades
             </h1>
             <p className="text-sm text-muted-foreground font-medium">
@@ -485,14 +485,14 @@ ${vencidosONear.map(p => {
           </div>
 
           {/* Quick Header Actions */}
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col sm:flex-row gap-2.5 shrink-0">
             {activeTab === 'precios' && (
               <>
                 <Button 
                   onClick={handleGuardarTodo} 
                   disabled={guardandoTodo || productos.filter(esDiferente).length === 0}
                   variant="outline"
-                  className="rounded-2xl border-border/80 text-xs font-bold shadow-sm"
+                  className="rounded-2xl border-border/80 text-xs font-black shadow-sm h-11 w-full sm:w-auto"
                 >
                   {guardandoTodo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4 text-indigo-500" />}
                   Guardar Costos ({productos.filter(esDiferente).length})
@@ -500,7 +500,7 @@ ${vencidosONear.map(p => {
                 <Button 
                   onClick={handleAplicarTodoSugerido} 
                   disabled={aplicandoTodo}
-                  className="rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm"
+                  className="rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-sm h-11 w-full sm:w-auto"
                 >
                   {aplicandoTodo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
                   Aplicar Precios Sugeridos
@@ -512,7 +512,7 @@ ${vencidosONear.map(p => {
               <Button 
                 onClick={handleGenerarLiquidacionVencimientos} 
                 disabled={aiCargandoVencidos || productosConVencimiento.length === 0}
-                className="rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm"
+                className="rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-sm h-11 w-full sm:w-auto"
               >
                 {aiCargandoVencidos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                 Crear Ofertas de Liquidación (IA)
@@ -521,8 +521,8 @@ ${vencidosONear.map(p => {
           </div>
         </header>
 
-        {/* Tab Selection Navigation */}
-        <div className="flex border-b border-border/50 mb-8 gap-6">
+        {/* Tab Selector */}
+        <div className="flex border-b border-border/50 mb-6 gap-6">
           <button
             onClick={() => setActiveTab('precios')}
             className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 ${
@@ -543,7 +543,6 @@ ${vencidosONear.map(p => {
             }`}
           >
             Control de Vencimientos
-            {/* Show a red pulsing badge if there are expired/expiring abarrotes */}
             {productosConVencimiento.some(p => obtenerDiasParaVencer(p.fecha_caducidad!) <= 30) && (
               <span className="absolute -top-1.5 -right-3.5 flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -553,39 +552,41 @@ ${vencidosONear.map(p => {
           </button>
         </div>
 
-        {/* Dynamic Panels */}
+        {/* Panels */}
         <AnimatePresence mode="wait">
           {activeTab === 'precios' ? (
             <motion.div 
               key="precios-tab"
-              initial={{ opacity: 0, y: 15 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              className="grid grid-cols-1 gap-8 xl:grid-cols-3"
+              exit={{ opacity: 0, y: -10 }}
+              className="grid grid-cols-1 gap-6 xl:grid-cols-3"
             >
-              {/* Product Costs Table */}
+              
+              {/* Product Cost entries */}
               <div className="xl:col-span-2 space-y-6">
-                <Card className="rounded-[2rem] border-border/40 shadow-md bg-card/60 backdrop-blur-sm overflow-hidden">
-                  <CardHeader className="pb-4">
+                <Card className="rounded-[2rem] border-border/40 shadow-sm bg-card/60 backdrop-blur-sm overflow-hidden">
+                  <CardHeader className="pb-3 px-5 sm:px-6">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <CardTitle className="text-xl font-bold">Listado de Cotizaciones</CardTitle>
-                        <CardDescription className="text-xs">Actualiza el costo y visualiza los márgenes recomendados.</CardDescription>
+                        <CardTitle className="text-lg font-bold tracking-tight">Listado de Cotizaciones</CardTitle>
+                        <CardDescription className="text-xs">Introduce el costo mayorista y previsualiza los precios.</CardDescription>
                       </div>
                       <div className="relative w-full sm:w-72">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-60" />
+                        <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-60" />
                         <Input
                           placeholder="Buscar producto..."
                           value={filtroBusqueda}
                           onChange={(e) => setFiltroBusqueda(e.target.value)}
-                          className="pl-9 rounded-xl border-border/60 text-xs bg-background/50 h-10"
+                          className="pl-9 rounded-xl border-border/60 text-[16px] md:text-xs bg-background/50 h-10"
                         />
                       </div>
                     </div>
                   </CardHeader>
 
+                  {/* Desktop Table View */}
                   <CardContent className="p-0">
-                    <div className="overflow-x-auto">
+                    <div className="hidden md:block overflow-x-auto">
                       <table className="w-full text-left border-collapse">
                         <thead>
                           <tr className="border-b border-border/50 bg-muted/20 text-[10px] font-black text-muted-foreground uppercase tracking-widest">
@@ -702,36 +703,142 @@ ${vencidosONear.map(p => {
                               </tr>
                             );
                           })}
-
-                          {productosFiltrados.length === 0 && (
-                            <tr>
-                              <td colSpan={6} className="text-center py-12 text-muted-foreground font-semibold">
-                                {cargando ? (
-                                  <div className="flex justify-center items-center gap-2">
-                                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                    Cargando catálogo...
-                                  </div>
-                                ) : (
-                                  'No se encontraron productos activos.'
-                                )}
-                              </td>
-                            </tr>
-                          )}
                         </tbody>
                       </table>
                     </div>
+
+                    {/* Mobile Stacked Card View */}
+                    <div className="block md:hidden divide-y divide-border/30">
+                      {productosFiltrados.map((p) => {
+                        const sug = calcularPrecioSugerido(p.id, p.costo_actual);
+                        const changed = esDiferente(p);
+                        
+                        return (
+                          <div 
+                            key={p.id}
+                            className={`p-4 transition-colors ${changed ? 'bg-indigo-500/5 dark:bg-indigo-500/10' : ''}`}
+                          >
+                            <div className="flex justify-between items-start gap-3 mb-3">
+                              <div>
+                                <h4 className="font-bold text-sm text-foreground leading-tight">{p.nombre}</h4>
+                                <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-wider block mt-0.5">
+                                  Stock: {p.stock_actual.toFixed(2)} {p.unidad} ({p.unidad === 'kg' ? 'peso' : 'unid'})
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {changed && (
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    disabled={guardandoProductoId === p.id}
+                                    onClick={() => handleGuardarProducto(p)}
+                                    className="h-9 w-9 rounded-xl bg-indigo-500/10 border-indigo-500/20 text-indigo-500"
+                                  >
+                                    {guardandoProductoId === p.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Check className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={sug <= 0 || sug === p.precio}
+                                  onClick={() => handleAplicarSugerido(p)}
+                                  className="h-9 text-[10px] font-black rounded-xl"
+                                >
+                                  Aplicar
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Cost and Margin side by side */}
+                            <div className="grid grid-cols-2 gap-3.5 mb-3">
+                              <div className="space-y-1">
+                                <Label className="text-[10px] font-black text-muted-foreground uppercase opacity-75">Costo Mayorista</Label>
+                                <div className="relative">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground opacity-60">$</span>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    placeholder="0"
+                                    value={nuevosCostos[p.id] || ''}
+                                    onChange={(e) => setNuevosCostos({ ...nuevosCostos, [p.id]: e.target.value })}
+                                    className="pl-6 pr-2 rounded-xl text-[16px] bg-background/40 h-10 font-bold border-border/70"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="space-y-1">
+                                <Label className="text-[10px] font-black text-muted-foreground uppercase opacity-75">Margen Deseado</Label>
+                                <div className="relative">
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    max="1000"
+                                    placeholder="30"
+                                    value={margenesDeseados[p.id] || '30'}
+                                    onChange={(e) => setMargenesDeseados({ ...margenesDeseados, [p.id]: e.target.value })}
+                                    className="pr-6 pl-3 rounded-xl text-[16px] bg-background/40 h-10 font-bold text-center border-border/70"
+                                  />
+                                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-black">%</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Suggested Pricing row */}
+                            <div className="flex justify-between items-center bg-muted/40 p-2.5 rounded-xl text-xs font-semibold">
+                              <div>
+                                <span className="text-muted-foreground text-[10px]">Sugerido:</span>{' '}
+                                <span className="font-black text-indigo-600 dark:text-indigo-400">
+                                  {sug > 0 ? formatCLPCurrency(sug) : '—'}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-muted-foreground text-[10px]">Actual:</span>{' '}
+                                <span className="font-bold text-foreground">
+                                  {formatCLPCurrency(p.precio)}
+                                </span>
+                                {p.costo_actual && p.costo_actual > 0 && (
+                                  <span className={`ml-1 text-[9px] font-black uppercase ${
+                                    p.precio < p.costo_actual ? 'text-red-500' : 'text-emerald-500'
+                                  }`}>
+                                    ({(((p.precio - p.costo_actual) / p.precio) * 100).toFixed(0)}%)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {productosFiltrados.length === 0 && (
+                      <div className="text-center py-12 text-muted-foreground font-semibold">
+                        {cargando ? (
+                          <div className="flex justify-center items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                            Cargando catálogo...
+                          </div>
+                        ) : (
+                          'No se encontraron productos activos.'
+                        )}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
 
-              {/* AI Marketing Panel */}
+              {/* AI Assistant */}
               <div className="space-y-6">
                 <Card className="rounded-[2rem] border-indigo-500/20 shadow-md bg-card/60 backdrop-blur-sm overflow-hidden relative">
                   <div className="absolute top-0 right-0 p-4 opacity-10">
                     <Sparkles className="h-24 w-24 text-indigo-500" />
                   </div>
 
-                  <CardHeader className="border-b border-border/40 bg-gradient-to-r from-indigo-500/5 to-purple-500/5">
+                  <CardHeader className="border-b border-border/40 bg-gradient-to-r from-indigo-500/5 to-purple-500/5 px-5">
                     <div className="flex items-center gap-2">
                       <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-500 dark:text-indigo-400">
                         <Sparkles className="h-4 w-4" />
@@ -743,7 +850,7 @@ ${vencidosONear.map(p => {
                     </div>
                   </CardHeader>
 
-                  <CardContent className="p-6 space-y-5">
+                  <CardContent className="p-5 space-y-5">
                     <div className="space-y-2">
                       <Label htmlFor="contexto" className="text-xs font-bold">Instrucciones o Contexto del Negocio</Label>
                       <textarea
@@ -752,7 +859,7 @@ ${vencidosONear.map(p => {
                         placeholder="Ej: 'Quiero liquidar las manzanas porque hay mucho stock' o 'Es fin de semana largo y quiero aumentar ventas en picoteos'."
                         value={aiContexto}
                         onChange={(e) => setAiContexto(e.target.value)}
-                        className="w-full p-3 rounded-2xl border border-border/60 text-xs bg-background/50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium leading-relaxed resize-none"
+                        className="w-full p-3 rounded-2xl border border-border/60 text-[16px] md:text-xs bg-background/50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium leading-relaxed resize-none"
                       />
                     </div>
 
@@ -809,36 +916,37 @@ ${vencidosONear.map(p => {
           ) : (
             <motion.div 
               key="vencimientos-tab"
-              initial={{ opacity: 0, y: 15 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              className="grid grid-cols-1 gap-8 xl:grid-cols-3"
+              exit={{ opacity: 0, y: -10 }}
+              className="grid grid-cols-1 gap-6 xl:grid-cols-3"
             >
-              {/* Product Expiration List */}
+              
+              {/* Product Expirations list */}
               <div className="xl:col-span-2 space-y-6">
-                <Card className="rounded-[2rem] border-border/40 shadow-md bg-card/60 backdrop-blur-sm overflow-hidden">
-                  <CardHeader className="pb-4">
+                <Card className="rounded-[2rem] border-border/40 shadow-sm bg-card/60 backdrop-blur-sm overflow-hidden">
+                  <CardHeader className="pb-3 px-5 sm:px-6">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <CardTitle className="text-xl font-bold">Vencimiento de Abarrotes</CardTitle>
+                        <CardTitle className="text-lg font-bold tracking-tight">Vencimiento de Abarrotes</CardTitle>
                         <CardDescription className="text-xs">
-                          Listado de productos con caducidades registradas en el sistema, ordenados de forma crítica.
+                          Listado de productos con caducidades registradas, ordenados de forma crítica.
                         </CardDescription>
                       </div>
                       <div className="relative w-full sm:w-72">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-60" />
+                        <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-60" />
                         <Input
                           placeholder="Buscar producto..."
                           value={filtroBusqueda}
                           onChange={(e) => setFiltroBusqueda(e.target.value)}
-                          className="pl-9 rounded-xl border-border/60 text-xs bg-background/50 h-10"
+                          className="pl-9 rounded-xl border-border/60 text-[16px] md:text-xs bg-background/50 h-10"
                         />
                       </div>
                     </div>
                   </CardHeader>
 
-                  <CardContent className="p-6">
-                    <div className="space-y-4">
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="space-y-3">
                       {productosConVencimientoFiltrados.map((p) => {
                         const dias = obtenerDiasParaVencer(p.fecha_caducidad!);
                         const estaVencido = dias < 0;
@@ -857,23 +965,23 @@ ${vencidosONear.map(p => {
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-sm text-foreground">{p.nombre}</span>
                                 {p.sku && (
-                                  <span className="text-[9px] font-mono bg-muted border border-border px-1.5 py-0.5 rounded text-muted-foreground flex items-center gap-1">
+                                  <span className="text-[9px] font-mono bg-muted border border-border px-1.5 py-0.5 rounded text-muted-foreground flex items-center gap-1 shrink-0">
                                     <Barcode className="h-2.5 w-2.5" />
                                     {p.sku}
                                   </span>
                                 )}
                               </div>
                               <div className="text-[10px] text-muted-foreground font-semibold flex flex-wrap items-center gap-2">
-                                <span className="text-indigo-500 font-bold">Inventario: {p.stock_actual} {p.unidad}</span>
+                                <span className="text-indigo-500 font-bold">Stock: {p.stock_actual} {p.unidad}</span>
                                 <span className="h-1 w-1 rounded-full bg-border" />
                                 <span>Precio: {formatCLPCurrency(p.precio)}</span>
                               </div>
                             </div>
 
-                            <div className="mt-3 sm:mt-0 flex items-center gap-3">
-                              <div className="text-right">
-                                <div className="text-xs font-bold flex items-center gap-1 justify-end">
-                                  <Calendar className="h-3.5 w-3.5" />
+                            <div className="mt-3 sm:mt-0 flex items-center justify-between sm:justify-end gap-3.5 border-t sm:border-t-0 border-border/30 pt-2.5 sm:pt-0">
+                              <div className="text-left sm:text-right">
+                                <div className="text-xs font-bold flex items-center gap-1.5 justify-start sm:justify-end">
+                                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                                   <span>{p.fecha_caducidad}</span>
                                 </div>
                                 <div className="text-[10px] font-black uppercase tracking-wider mt-0.5 opacity-80">
@@ -887,7 +995,7 @@ ${vencidosONear.map(p => {
                                 </div>
                               </div>
 
-                              <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
+                              <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
                                 estaVencido ? 'bg-red-500/10 text-red-500' :
                                 proximo ? 'bg-amber-500/10 text-amber-500' :
                                 'bg-emerald-500/10 text-emerald-500'
@@ -913,14 +1021,14 @@ ${vencidosONear.map(p => {
                 </Card>
               </div>
 
-              {/* AI Expiration Plan Assistant */}
+              {/* AI Liquidation Plan Assistant */}
               <div className="space-y-6">
                 <Card className="rounded-[2rem] border-indigo-500/20 shadow-md bg-card/60 backdrop-blur-sm overflow-hidden relative">
                   <div className="absolute top-0 right-0 p-4 opacity-10">
                     <Sparkles className="h-24 w-24 text-indigo-500" />
                   </div>
 
-                  <CardHeader className="border-b border-border/40 bg-gradient-to-r from-red-500/5 to-indigo-500/5">
+                  <CardHeader className="border-b border-border/40 bg-gradient-to-r from-red-500/5 to-indigo-500/5 px-5">
                     <div className="flex items-center gap-2">
                       <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-500 dark:text-indigo-400">
                         <Sparkles className="h-4 w-4" />
@@ -932,7 +1040,7 @@ ${vencidosONear.map(p => {
                     </div>
                   </CardHeader>
 
-                  <CardContent className="p-6 space-y-5">
+                  <CardContent className="p-5 space-y-5">
                     <div className="text-xs text-muted-foreground font-medium leading-relaxed bg-muted/40 p-4 rounded-2xl border border-border/50">
                       Esta herramienta analiza los abarrotes que vencen pronto y genera combos de descuento, carteles promocionales y consejos estratégicos para vender el stock hoy mismo.
                     </div>
@@ -980,7 +1088,7 @@ ${vencidosONear.map(p => {
                     {!aiRespuestaVencidos && !aiCargandoVencidos && (
                       <div className="rounded-2xl border border-dashed border-border/60 p-6 text-center text-xs text-muted-foreground font-medium">
                         <AlertCircle className="h-5 w-5 mx-auto text-muted-foreground/60 mb-2" />
-                        Haz click en el botón de arriba para que Gemini analice las mermas potenciales y cree estrategias rápidas de liquidación.
+                        Haz click en el botón de arriba para que Gemini cree estrategias rápidas de liquidación.
                       </div>
                     )}
                   </CardContent>

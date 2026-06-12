@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { formatCLPCurrency, normalizeMoneyInput, parseChileanMoneyInput, roundToChileanDecena } from '@/lib/utils';
+import { formatCLPCurrency, normalizeMoneyInput, parseChileanMoneyInput, roundToChileanDecena, compressImage } from '@/lib/utils';
 import { 
   Plus, 
   Edit, 
@@ -226,8 +226,15 @@ function AdminPage() {
 
     incomingFiles.forEach(file => {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setLocalImages(prev => [...prev, { file, url: reader.result as string }]);
+      reader.onloadend = async () => {
+        const rawUrl = reader.result as string;
+        try {
+          const compressedUrl = await compressImage(rawUrl, 1024, 0.75);
+          setLocalImages(prev => [...prev, { file, url: compressedUrl }]);
+        } catch (err) {
+          console.warn('Error al comprimir imagen, usando original:', err);
+          setLocalImages(prev => [...prev, { file, url: rawUrl }]);
+        }
       };
       reader.readAsDataURL(file);
     });

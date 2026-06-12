@@ -65,3 +65,51 @@ export function roundToChileanDecena(value: number): number {
   }
   return rounded;
 }
+
+export function compressImage(dataUrl: string, maxDimension: number = 1024, quality: number = 0.75): Promise<string> {
+  if (typeof window === 'undefined') {
+    return Promise.resolve(dataUrl);
+  }
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.src = dataUrl;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxDimension) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        }
+      } else {
+        if (height > maxDimension) {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+      try {
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressedDataUrl);
+      } catch (err) {
+        console.warn('Fallo al exportar canvas, usando URL original:', err);
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = (err) => {
+      reject(err);
+    };
+  });
+}
+

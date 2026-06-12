@@ -70,7 +70,7 @@ export function PaymentDrawer({
   // Generate quick cash suggestions
   const standardBills = [1000, 2000, 5000, 10000, 20000];
   let quickCashOptions = standardBills.filter(bill => bill > totalCaja);
-  
+
   if (quickCashOptions.length === 0 || totalCaja > 20000) {
     const next5k = Math.ceil(totalCaja / 5000) * 5000;
     const next10k = Math.ceil(totalCaja / 10000) * 10000;
@@ -82,7 +82,7 @@ export function PaymentDrawer({
 
   const paymentMethods = [
     { value: 'efectivo', label: 'Efectivo', icon: Banknote, color: 'text-green-600' },
-    { value: 'transferencia', label: 'Transfer', icon: CreditCard, color: 'text-blue-600' },
+    { value: 'transferencia', label: 'Transferencia', icon: CreditCard, color: 'text-blue-600' },
     { value: 'tarjeta', label: 'Tarjeta', icon: CreditCard, color: 'text-purple-600' },
     { value: 'fiado', label: 'Fiado', icon: UserCircle, color: 'text-amber-600' },
   ];
@@ -91,8 +91,8 @@ export function PaymentDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent 
-        side="bottom" 
+      <SheetContent
+        side="bottom"
         className="h-[88vh] rounded-t-3xl border-t-4 border-primary bg-background p-0 dark:bg-background-dark sm:h-[82vh] sm:max-w-3xl sm:mx-auto"
       >
         <motion.div
@@ -172,15 +172,15 @@ export function PaymentDrawer({
                 {paymentMethods.map((method) => {
                   const Icon = method.icon;
                   const isSelected = metodoPago === method.value;
-                  
+
                   return (
                     <button
                       key={method.value}
                       onClick={() => setMetodoPago(method.value as MetodoPago)}
                       className={`
                         relative rounded-xl border-2 p-4 text-left transition-all
-                        ${isSelected 
-                          ? 'border-primary bg-primary/5 dark:bg-primary/10 shadow-medium' 
+                        ${isSelected
+                          ? 'border-primary bg-primary/5 dark:bg-primary/10 shadow-medium'
                           : 'border-border dark:border-border-dark hover:border-primary/50'
                         }
                       `}
@@ -250,17 +250,16 @@ export function PaymentDrawer({
 
                 {/* Live Change Calculation */}
                 {montoEfectivo > 0 && (
-                  <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                    montoEfectivo >= totalCaja 
-                      ? 'bg-emerald-500/10 dark:bg-emerald-500/20 border-emerald-500/15' 
+                  <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${montoEfectivo >= totalCaja
+                      ? 'bg-emerald-500/10 dark:bg-emerald-500/20 border-emerald-500/15'
                       : 'bg-red-500/10 dark:bg-red-500/20 border-red-500/15'
-                  }`}>
+                    }`}>
                     <span className={`text-xs font-bold ${montoEfectivo >= totalCaja ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-800 dark:text-red-300'}`}>
                       {montoEfectivo >= totalCaja ? 'Vuelto a entregar:' : 'Monto insuficiente:'}
                     </span>
                     <span className={`text-lg font-black ${montoEfectivo >= totalCaja ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {montoEfectivo >= totalCaja 
-                        ? formatCLPCurrency(montoEfectivo - totalCaja) 
+                      {montoEfectivo >= totalCaja
+                        ? formatCLPCurrency(montoEfectivo - totalCaja)
                         : `Faltan ${formatCLPCurrency(totalCaja - montoEfectivo)}`}
                     </span>
                   </div>

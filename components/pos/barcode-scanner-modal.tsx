@@ -8,8 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Producto } from '@/lib/types/pos';
 import { useToast } from '@/hooks/use-toast';
-import { Camera, Keyboard, AlertCircle, Loader2, Sparkles, Check } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Camera, Keyboard, AlertCircle, Loader2, Check } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface BarcodeScannerModalProps {
   open: boolean;
@@ -26,157 +26,91 @@ export function BarcodeScannerModal({
 }: BarcodeScannerModalProps) {
   const [activeTab, setActiveTab] = useState<string>('camera');
   const [manualSku, setManualSku] = useState('');
-  const [hasNativeDetector, setHasNativeDetector] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
-  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
   const [cameraPermission, setCameraPermission] = useState<'pending' | 'granted' | 'denied'>('pending');
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const procesandoScan = useRef(false);
   const { toast } = useToast();
 
-  // Detect native BarcodeDetector support
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
-      setHasNativeDetector(true);
-    }
-  }, []);
+    let isMounted = true;
+    let html5QrCode: any = null;
 
-  // Handle camera start/stop
-  useEffect(() => {
     if (open && activeTab === 'camera') {
-      startCamera();
-    } else {
-      stopCamera();
-    }
+      const initScanner = async () => {
+        try {
+          if (!isMounted) return;
+          setCameraPermission('pending');
+          setIsScanning(false);
 
-    return () => {
-      stopCamera();
-    };
-  }, [open, activeTab]);
+          // Dynamically import to avoid Next.js SSR errors
+          const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+          
+          if (!isMounted) return;
 
-  // Auto-scan loop for non-native platforms (like iOS Safari) using Gemini Vision
-  useEffect(() => {
-    let autoScanInterval: NodeJS.Timeout | null = null;
+          html5QrCode = new Html5Qrcode("reader");
 
-    if (open && activeTab === 'camera' && cameraPermission === 'granted' && !hasNativeDetector) {
-      autoScanInterval = setInterval(() => {
-        if (!isAiAnalyzing && !procesandoScan.current) {
-          scanWithAi(true);
-        }
-      }, 3000); // Trigger auto-scan every 3 seconds
-    }
+          const config = {
+            fps: 15, // High frame rate for fast scanner responsiveness
+            formatsToSupport: [
+              Html5QrcodeSupportedFormats.EAN_13,
+              Html5QrcodeSupportedFormats.EAN_8,
+              Html5QrcodeSupportedFormats.UPC_A,
+              Html5QrcodeSupportedFormats.UPC_E,
+              Html5QrcodeSupportedFormats.CODE_128,
+              Html5QrcodeSupportedFormats.CODE_39
+            ]
+          };
 
-    return () => {
-      if (autoScanInterval) {
-        clearInterval(autoScanInterval);
-      }
-    };
-  }, [open, activeTab, cameraPermission, hasNativeDetector, isAiAnalyzing]);
+          await html5QrCode.start(
+            { facingMode: "environment" },
+            config,
+            (decodedText: string) => {
+              handleCodeFound(decodedText);
+            },
+            () => {
+              // Ignore frame-by-frame parse errors
+            }
+          );
 
-  const startCamera = async () => {
-    try {
-      setCameraPermission('pending');
-      setIsScanning(true);
-
-      const constraints = {
-        video: {
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          if (isMounted) {
+            setCameraPermission('granted');
+            setIsScanning(true);
+          }
+        } catch (err) {
+          console.error("Error starting camera scanner:", err);
+          if (isMounted) {
+            setCameraPermission('denied');
+            setIsScanning(false);
+            toast({
+              title: 'Error de cámara',
+              description: 'No pudimos acceder a tu cámara. Asegúrate de otorgar permisos o usa el ingreso manual.',
+              variant: 'destructive'
+            });
+          }
         }
       };
 
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-      } catch (firstErr) {
-        console.warn('Fallo al obtener cámara trasera con constraints específicos, intentando fallback de video genérico:', firstErr);
-        // Fallback: request any video track (works on desktop laptops/front cameras)
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: 'user' 
-          } 
-        }).catch(async () => {
-          // Absolute fallback: just video true
-          return await navigator.mediaDevices.getUserMedia({ video: true });
+      // Slight timeout to ensure the DOM element #reader is mounted
+      const timer = setTimeout(() => {
+        initScanner();
+      }, 150);
+
+      return () => {
+        clearTimeout(timer);
+      };
+    }
+
+    return () => {
+      isMounted = false;
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().catch((err: any) => {
+          console.error("Error stopping scanner:", err);
         });
       }
-
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute('playsinline', 'true');
-        try {
-          await videoRef.current.play();
-        } catch (playErr) {
-          console.error('Error al llamar a video.play():', playErr);
-        }
-      }
-
-      setCameraPermission('granted');
-
-      // Start native barcode detection loop if supported
-      if ('BarcodeDetector' in window) {
-        startNativeDetection();
-      }
-    } catch (err) {
-      console.error('Error al acceder a la cámara:', err);
-      setCameraPermission('denied');
-      setIsScanning(false);
-      toast({
-        title: 'Error de cámara',
-        description: 'No pudimos acceder a tu cámara. Asegúrate de otorgar permisos o usa el ingreso manual.',
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const stopCamera = () => {
-    setIsScanning(false);
-    if (detectionIntervalRef.current) {
-      clearInterval(detectionIntervalRef.current);
-      detectionIntervalRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-  };
-
-  const startNativeDetection = () => {
-    if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
-
-    // Run barcode scanner loop every 350ms
-    detectionIntervalRef.current = setInterval(async () => {
-      if (!videoRef.current || !streamRef.current || !isScanning) return;
-
-      try {
-        const BarcodeDetectorClass = (window as any).BarcodeDetector;
-        const detector = new BarcodeDetectorClass({
-          formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39']
-        });
-
-        const barcodes = await detector.detect(videoRef.current);
-
-        if (barcodes && barcodes.length > 0) {
-          const scannedCode = barcodes[0].rawValue;
-          handleCodeFound(scannedCode);
-        }
-      } catch (err) {
-        console.error('Error en detección de código nativo:', err);
-      }
-    }, 350);
-  };
+    };
+  }, [open, activeTab]);
 
   const handleCodeFound = (code: string) => {
-    // Sound/haptic feedback
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       navigator.vibrate(100);
     }
@@ -191,7 +125,6 @@ export function BarcodeScannerModal({
         variant: 'success'
       });
       onDetected(product);
-      // Clean states and close
       setManualSku('');
       onClose();
     } else {
@@ -203,81 +136,12 @@ export function BarcodeScannerModal({
     }
   };
 
-  // Capture frame and send to Gemini Vision for scanning
-  const scanWithAi = async (silent: boolean = false) => {
-    if (!videoRef.current || isAiAnalyzing || procesandoScan.current) return;
-
-    try {
-      setIsAiAnalyzing(true);
-      procesandoScan.current = true;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth || 640;
-      canvas.height = videoRef.current.videoHeight || 480;
-      const ctx = canvas.getContext('2d');
-
-      if (!ctx) throw new Error('No se pudo inicializar el contexto 2D del canvas');
-
-      // Draw video frame to canvas
-      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const base64Image = canvas.toDataURL('image/jpeg', 0.85);
-
-      if (!silent) {
-        toast({
-          title: 'Analizando con IA...',
-          description: 'Gemini está buscando el código de barras y producto en la imagen.',
-        });
-      }
-
-      // Call API
-      const res = await fetch('/api/analyze-product', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64Image })
-      });
-
-      if (!res.ok) {
-        throw new Error('La IA falló al procesar la imagen');
-      }
-
-      const data = await res.json();
-      
-      if (data.sku) {
-        handleCodeFound(data.sku);
-      } else {
-        if (!silent) {
-          toast({
-            title: 'IA no detectó SKU',
-            description: 'No pudimos encontrar un código de barras claro. Intenta acercar el código al centro o ingresarlo manualmente.',
-            variant: 'destructive'
-          });
-        }
-      }
-    } catch (err: any) {
-      console.error('Error al escanear con IA:', err);
-      if (!silent) {
-        toast({
-          title: 'Error de IA',
-          description: err.message || 'No se pudo procesar la solicitud',
-          variant: 'destructive'
-        });
-      }
-    } finally {
-      setIsAiAnalyzing(false);
-      // Debounce scanner reactivation
-      setTimeout(() => {
-        procesandoScan.current = false;
-      }, 1500);
-    }
-  };
-
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualSku.trim()) return;
     handleCodeFound(manualSku);
   };
 
-  // Focus manual input on tab change
   const manualInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (activeTab === 'manual') {
@@ -315,13 +179,11 @@ export function BarcodeScannerModal({
 
               <TabsContent value="camera" className="mt-0 outline-none">
                 <div className="relative w-full h-[280px] bg-black rounded-2xl overflow-hidden border border-border/20 shadow-inner">
-                  {/* Always render video to prevent React Ref/Mount race conditions */}
-                  <video
-                    ref={videoRef}
-                    className={`w-full h-full object-cover ${cameraPermission === 'granted' ? 'block' : 'hidden'}`}
-                    playsInline
-                    muted
-                    autoPlay
+                  
+                  {/* Container for html5-qrcode video mounting */}
+                  <div 
+                    id="reader" 
+                    className="w-full h-full overflow-hidden [&>video]:w-full [&>video]:h-full [&>video]:object-cover"
                   />
 
                   {/* Pending state overlay */}
@@ -373,45 +235,20 @@ export function BarcodeScannerModal({
                         </div>
                       </div>
 
-                      {/* AI Scan Fallback Action */}
-                      <div className="absolute bottom-4 left-0 right-0 flex justify-center z-20">
-                        <Button
-                          type="button"
-                          onClick={() => scanWithAi(false)}
-                          disabled={isAiAnalyzing}
-                          className="h-10 bg-primary hover:bg-primary/90 text-white rounded-full shadow-lg px-5 text-xs font-extrabold tracking-wider flex items-center gap-2"
-                        >
-                          {isAiAnalyzing ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Sparkles className="h-4 w-4 text-amber-300" />
-                          )}
-                          {isAiAnalyzing ? 'ANALIZANDO CÓDIGO...' : 'ESCANEAR CON IA'}
-                        </Button>
-                      </div>
-
-                      {/* Analysis Loading Overlay */}
-                      {isAiAnalyzing && (
-                        <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px] flex flex-col items-center justify-center text-white gap-2 z-10 animate-fade-in">
-                          <Loader2 className="h-7 w-7 animate-spin text-primary" />
-                          <span className="text-[10px] font-black tracking-widest uppercase text-white/95">Analizando código...</span>
-                        </div>
-                      )}
-
                       {/* Mode indication with green pulsing dot */}
                       <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-md text-[9px] font-black tracking-widest text-white/90 border border-white/10 flex items-center gap-1.5 z-20">
                         <span className="relative flex h-1.5 w-1.5">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                           <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                         </span>
-                        {hasNativeDetector ? 'LECTOR NATIVO ACTIVO' : 'AUTO-ESCANER ACTIVO'}
+                        <span>LECTOR ACTIVO</span>
                       </div>
                     </>
                   )}
                 </div>
                 
                 <p className="text-[10px] text-center mt-3 text-muted-foreground font-medium">
-                  Apunta al código de barras. Si es oscuro o borroso, presiona &quot;Escanear con IA&quot;.
+                  Apunta al código de barras. La lectura se realizará de forma local e instantánea.
                 </p>
               </TabsContent>
 

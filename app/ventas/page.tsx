@@ -105,21 +105,9 @@ function VentasPage() {
       return;
     }
 
-    if (producto.unidad === 'kg') {
-      setProductoSeleccionado(producto);
-      setModalPesajeOpen(true);
-    } else {
-      const item: ItemVenta = {
-        producto_id: producto.id,
-        nombre: producto.nombre,
-        precio_unitario: producto.precio,
-        unidad: producto.unidad,
-        neto: 1,
-        total: Math.round(producto.precio),
-        cantidad: 1
-      };
-      handleAgregarAlCarrito(item);
-    }
+    // Always open the Weight/Quantity modal so the cashier can set the amount
+    setProductoSeleccionado(producto);
+    setModalPesajeOpen(true);
   };
 
   // Global barcode listener for physical gun scanners

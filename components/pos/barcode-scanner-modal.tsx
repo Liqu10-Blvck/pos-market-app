@@ -34,6 +34,7 @@ export function BarcodeScannerModal({
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const procesandoScan = useRef(false);
   const { toast } = useToast();
 
   // Detect native BarcodeDetector support
@@ -55,6 +56,25 @@ export function BarcodeScannerModal({
       stopCamera();
     };
   }, [open, activeTab]);
+
+  // Auto-scan loop for non-native platforms (like iOS Safari) using Gemini Vision
+  useEffect(() => {
+    let autoScanInterval: NodeJS.Timeout | null = null;
+
+    if (open && activeTab === 'camera' && cameraPermission === 'granted' && !hasNativeDetector) {
+      autoScanInterval = setInterval(() => {
+        if (!isAiAnalyzing && !procesandoScan.current) {
+          scanWithAi(true);
+        }
+      }, 3000); // Trigger auto-scan every 3 seconds
+    }
+
+    return () => {
+      if (autoScanInterval) {
+        clearInterval(autoScanInterval);
+      }
+    };
+  }, [open, activeTab, cameraPermission, hasNativeDetector, isAiAnalyzing]);
 
   const startCamera = async () => {
     try {
@@ -184,11 +204,12 @@ export function BarcodeScannerModal({
   };
 
   // Capture frame and send to Gemini Vision for scanning
-  const scanWithAi = async () => {
-    if (!videoRef.current || isAiAnalyzing) return;
+  const scanWithAi = async (silent: boolean = false) => {
+    if (!videoRef.current || isAiAnalyzing || procesandoScan.current) return;
 
     try {
       setIsAiAnalyzing(true);
+      procesandoScan.current = true;
 
       const canvas = document.createElement('canvas');
       canvas.width = videoRef.current.videoWidth || 640;
@@ -199,12 +220,14 @@ export function BarcodeScannerModal({
 
       // Draw video frame to canvas
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const base64Image = canvas.toDataURL('image/jpeg', 0.8);
+      const base64Image = canvas.toDataURL('image/jpeg', 0.85);
 
-      toast({
-        title: 'Analizando con IA...',
-        description: 'Gemini está buscando el código de barras y producto en la imagen.',
-      });
+      if (!silent) {
+        toast({
+          title: 'Analizando con IA...',
+          description: 'Gemini está buscando el código de barras y producto en la imagen.',
+        });
+      }
 
       // Call API
       const res = await fetch('/api/analyze-product', {
@@ -222,21 +245,29 @@ export function BarcodeScannerModal({
       if (data.sku) {
         handleCodeFound(data.sku);
       } else {
-        toast({
-          title: 'IA no detectó SKU',
-          description: 'No pudimos encontrar un código de barras claro. Intenta acercar el código al centro o ingresarlo manualmente.',
-          variant: 'destructive'
-        });
+        if (!silent) {
+          toast({
+            title: 'IA no detectó SKU',
+            description: 'No pudimos encontrar un código de barras claro. Intenta acercar el código al centro o ingresarlo manualmente.',
+            variant: 'destructive'
+          });
+        }
       }
     } catch (err: any) {
       console.error('Error al escanear con IA:', err);
-      toast({
-        title: 'Error de IA',
-        description: err.message || 'No se pudo procesar la solicitud',
-        variant: 'destructive'
-      });
+      if (!silent) {
+        toast({
+          title: 'Error de IA',
+          description: err.message || 'No se pudo procesar la solicitud',
+          variant: 'destructive'
+        });
+      }
     } finally {
       setIsAiAnalyzing(false);
+      // Debounce scanner reactivation
+      setTimeout(() => {
+        procesandoScan.current = false;
+      }, 1500);
     }
   };
 
@@ -343,10 +374,10 @@ export function BarcodeScannerModal({
                       </div>
 
                       {/* AI Scan Fallback Action */}
-                      <div className="absolute bottom-4 left-0 right-0 flex justify-center">
+                      <div className="absolute bottom-4 left-0 right-0 flex justify-center z-20">
                         <Button
                           type="button"
-                          onClick={scanWithAi}
+                          onClick={() => scanWithAi(false)}
                           disabled={isAiAnalyzing}
                           className="h-10 bg-primary hover:bg-primary/90 text-white rounded-full shadow-lg px-5 text-xs font-extrabold tracking-wider flex items-center gap-2"
                         >
@@ -359,9 +390,21 @@ export function BarcodeScannerModal({
                         </Button>
                       </div>
 
-                      {/* Mode indication */}
-                      <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-md text-[9px] font-black tracking-widest text-white/90 border border-white/10">
-                        {hasNativeDetector ? 'LECTOR NATIVO ACTIVO' : 'ESCANER EN VIVO'}
+                      {/* Analysis Loading Overlay */}
+                      {isAiAnalyzing && (
+                        <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px] flex flex-col items-center justify-center text-white gap-2 z-10 animate-fade-in">
+                          <Loader2 className="h-7 w-7 animate-spin text-primary" />
+                          <span className="text-[10px] font-black tracking-widest uppercase text-white/95">Analizando código...</span>
+                        </div>
+                      )}
+
+                      {/* Mode indication with green pulsing dot */}
+                      <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-md text-[9px] font-black tracking-widest text-white/90 border border-white/10 flex items-center gap-1.5 z-20">
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                        </span>
+                        {hasNativeDetector ? 'LECTOR NATIVO ACTIVO' : 'AUTO-ESCANER ACTIVO'}
                       </div>
                     </>
                   )}

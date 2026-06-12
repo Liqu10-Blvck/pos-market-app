@@ -30,7 +30,7 @@ export function WeightModal({ producto, open, onClose, onAgregar }: WeightModalP
     if (open && producto) {
       setPesoBruto('');
       setTara('');
-      setCantidad('');
+      setCantidad(producto.unidad === 'unid' ? '1' : '');
       setPrecioManual(producto.precio.toString());
       setModoVenta('detalle');
       setActiveInput(producto.unidad === 'kg' ? 'bruto' : 'cantidad');

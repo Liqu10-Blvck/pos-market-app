@@ -17,8 +17,8 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { 
-          error: 'La clave de API de Gemini (GEMINI_API_KEY) no está configurada en el servidor. Por favor, añádela a tu archivo .env.' 
+        {
+          error: 'La clave de API de Gemini (GEMINI_API_KEY) no está configurada en el servidor. Por favor, añádela a tu archivo .env.'
         },
         { status: 500 }
       );
@@ -27,8 +27,8 @@ export async function POST(req: NextRequest) {
     // Inicializar Google Generative AI
     const genAI = new GoogleGenerativeAI(apiKey);
     // Usar el modelo gemini-2.5-flash para análisis multimodal de alta velocidad
-    const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.5-flash',
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-3.1-flash-lite',
       generationConfig: {
         responseMimeType: 'application/json'
       }
@@ -78,9 +78,9 @@ Recuerda: Tu respuesta debe ser estrictamente un objeto JSON válido que coincid
     } catch (parseError) {
       console.error('Error al parsear respuesta de Gemini Vision:', responseText, parseError);
       return NextResponse.json(
-        { 
-          error: 'La respuesta de la IA no pudo ser interpretada como JSON.', 
-          rawResponse: responseText 
+        {
+          error: 'La respuesta de la IA no pudo ser interpretada como JSON.',
+          rawResponse: responseText
         },
         { status: 500 }
       );

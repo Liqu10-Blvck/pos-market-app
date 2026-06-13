@@ -15,8 +15,8 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { 
-          error: 'La clave de API de Gemini (GEMINI_API_KEY) no está configurada en el servidor. Por favor, añádela a tu archivo .env.' 
+        {
+          error: 'La clave de API de Gemini (GEMINI_API_KEY) no está configurada en el servidor. Por favor, añádela a tu archivo .env.'
         },
         { status: 500 }
       );
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     // Inicializar Google Generative AI
     const genAI = new GoogleGenerativeAI(apiKey);
     // Usar el modelo gemini-2.5-flash
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
 
     // Construir un prompt estratégico y estructurado
     const prompt = `
@@ -37,15 +37,15 @@ ${contexto ? `Contexto extra del negocio: ${contexto}` : 'No se especificó cont
 
 Lista de productos actuales en stock y su rentabilidad:
 ${productos.map((p: any) => {
-  const costo = p.costo_actual || 0;
-  const precio = p.precio || 0;
-  const margenDeseado = p.margen_deseado || 30;
-  const precioSugerido = costo > 0 ? costo * (1 + margenDeseado / 100) : 0;
-  const margenRealPorcentaje = precio > 0 && costo > 0 ? ((precio - costo) / precio) * 100 : 0;
-  const stock = p.stock_actual || 0;
-  const unidad = p.unidad || 'unid';
-  
-  return `- **${p.nombre}**:
+      const costo = p.costo_actual || 0;
+      const precio = p.precio || 0;
+      const margenDeseado = p.margen_deseado || 30;
+      const precioSugerido = costo > 0 ? costo * (1 + margenDeseado / 100) : 0;
+      const margenRealPorcentaje = precio > 0 && costo > 0 ? ((precio - costo) / precio) * 100 : 0;
+      const stock = p.stock_actual || 0;
+      const unidad = p.unidad || 'unid';
+
+      return `- **${p.nombre}**:
     * Unidad: ${unidad}
     * Stock actual: ${stock.toFixed(2)} ${unidad}
     * Costo actual: $${costo.toFixed(2)}
@@ -54,7 +54,7 @@ ${productos.map((p: any) => {
     * Precio de venta sugerido (según margen deseado): $${precioSugerido.toFixed(2)}
     * Margen real actual: ${margenRealPorcentaje.toFixed(2)}%
   `;
-}).join('\n')}
+    }).join('\n')}
 
 Por favor, estructura tus recomendaciones en los siguientes apartados usando un formato Markdown profesional, limpio y con una estética moderna:
 

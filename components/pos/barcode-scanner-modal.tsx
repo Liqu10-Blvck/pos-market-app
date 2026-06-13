@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,151 +27,210 @@ export function BarcodeScannerModal({
   const [activeTab, setActiveTab] = useState<string>('camera');
   const [manualSku, setManualSku] = useState('');
   const [isScanning, setIsScanning] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [cameraPermission, setCameraPermission] = useState<'pending' | 'granted' | 'denied'>('pending');
 
   const { toast } = useToast();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
-    let html5QrCode: any = null;
+  // Stop camera helper
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsScanning(false);
+  }, []);
 
-    if (open && activeTab === 'camera') {
-      const initScanner = async () => {
-        try {
-          if (!isMounted) return;
+  // Start camera helper
+  const startCamera = useCallback(async () => {
+    try {
+      setCameraPermission('pending');
+      setIsScanning(false);
 
-          const readerElement = document.getElementById("reader");
-          if (!readerElement) {
-            // Poll until element is present in the DOM
-            setTimeout(initScanner, 50);
-            return;
-          }
+      // Stop any existing stream first
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
 
-          setCameraPermission('pending');
-          setIsScanning(false);
-
-          // Dynamically import to avoid Next.js SSR errors
-          const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
-          
-          if (!isMounted) return;
-
-          html5QrCode = new Html5Qrcode("reader");
-
-          const config = {
-            fps: 15, // High frame rate for fast scanner responsiveness
-            qrbox: (width: number, height: number) => {
-              // Focus scanning exactly in the center matching our green overlay (280x160)
-              return {
-                width: Math.min(width, 280),
-                height: Math.min(height, 160)
-              };
-            },
-            formatsToSupport: [
-              Html5QrcodeSupportedFormats.EAN_13,
-              Html5QrcodeSupportedFormats.EAN_8,
-              Html5QrcodeSupportedFormats.UPC_A,
-              Html5QrcodeSupportedFormats.UPC_E,
-              Html5QrcodeSupportedFormats.CODE_128,
-              Html5QrcodeSupportedFormats.CODE_39
-            ],
-            experimentalFeatures: {
-              useBarCodeDetectorIfSupported: true
-            }
-          };
-
-          try {
-            await html5QrCode.start(
-              { 
-                facingMode: "environment",
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-              },
-              config,
-              (decodedText: string) => {
-                handleCodeFound(decodedText);
-              },
-              () => {}
-            );
-          } catch (startErr) {
-            console.warn("Fallo al iniciar con cámara trasera, intentando frontal:", startErr);
-            try {
-              await html5QrCode.start(
-                { 
-                  facingMode: "user",
-                  width: { ideal: 1280 },
-                  height: { ideal: 720 }
-                },
-                config,
-                (decodedText: string) => {
-                  handleCodeFound(decodedText);
-                },
-                () => {}
-              );
-            } catch (userErr) {
-              console.warn("Fallo al iniciar con cámara frontal, intentando con primer ID disponible:", userErr);
-              const devices = await Html5Qrcode.getCameras();
-              if (devices && devices.length > 0) {
-                await html5QrCode.start(
-                  devices[0].id,
-                  config,
-                  (decodedText: string) => {
-                    handleCodeFound(decodedText);
-                  },
-                  () => {}
-                );
-              } else {
-                throw new Error("No se encontraron cámaras de video en este dispositivo.");
-              }
-            }
-          }
-
-          if (isMounted) {
-            setCameraPermission('granted');
-            setIsScanning(true);
-          }
-        } catch (err) {
-          console.error("Error starting camera scanner:", err);
-          if (isMounted) {
-            setCameraPermission('denied');
-            setIsScanning(false);
-            toast({
-              title: 'Error de cámara',
-              description: 'No pudimos acceder a tu cámara. Asegúrate de otorgar permisos o usa el ingreso manual.',
-              variant: 'destructive'
-            });
-          }
-        }
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
       };
 
-      // Slight timeout to ensure the DOM element #reader is mounted
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setCameraPermission('granted');
+      setIsScanning(true);
+    } catch (err) {
+      console.error("Error starting camera:", err);
+      // Fallback: try front camera if back camera fails
+      try {
+        const constraintsFallback: MediaStreamConstraints = {
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        };
+        const streamFallback = await navigator.mediaDevices.getUserMedia(constraintsFallback);
+        streamRef.current = streamFallback;
+        if (videoRef.current) {
+          videoRef.current.srcObject = streamFallback;
+        }
+        setCameraPermission('granted');
+        setIsScanning(true);
+      } catch (fallbackErr) {
+        console.error("Fallback camera also failed:", fallbackErr);
+        setCameraPermission('denied');
+        setIsScanning(false);
+        toast({
+          title: 'Error de cámara',
+          description: 'No pudimos acceder a tu cámara. Asegúrate de otorgar permisos o usa el ingreso manual.',
+          variant: 'destructive'
+        });
+      }
+    }
+  }, [toast]);
+
+  // Manage camera lifecycle
+  useEffect(() => {
+    if (open && activeTab === 'camera') {
       const timer = setTimeout(() => {
-        initScanner();
-      }, 150);
+        startCamera();
+      }, 300); // small delay to allow dialog transition
 
       return () => {
         clearTimeout(timer);
+        stopCamera();
       };
+    } else {
+      stopCamera();
     }
+  }, [open, activeTab, startCamera, stopCamera]);
+
+  // Function to capture the center box and scan via Gemini API
+  const captureAndScan = useCallback(async () => {
+    if (!videoRef.current || !isScanning || isAnalyzing) return;
+
+    const video = videoRef.current;
+    if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+    // Create temporary canvas
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+
+    // Crop box dimensions - target the center of the camera view
+    // Crop a horizontal rectangle of 50% width and 35% height
+    const cropWidth = Math.round(videoWidth * 0.5);
+    const cropHeight = Math.round(videoHeight * 0.35);
+
+    // Target dimensions for base64 payload to keep processing extremely fast
+    const targetWidth = 500;
+    const targetHeight = 250;
+
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const sx = (videoWidth - cropWidth) / 2;
+    const sy = (videoHeight - cropHeight) / 2;
+
+    ctx.drawImage(
+      video,
+      sx, sy, cropWidth, cropHeight, // source rectangle
+      0, 0, targetWidth, targetHeight // destination rectangle
+    );
+
+    const base64Image = canvas.toDataURL('image/jpeg', 0.85);
+
+    setIsAnalyzing(true);
+    try {
+      const res = await fetch('/api/scan-barcode', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ image: base64Image }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Scan request failed');
+      }
+
+      const data = await res.json();
+      if (data.sku) {
+        const cleanedSku = data.sku.trim();
+        const matched = productos.find(p => p.sku && p.sku.trim() === cleanedSku);
+        if (matched) {
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            navigator.vibrate([100, 50, 100]);
+          }
+          toast({
+            title: 'Producto Detectado',
+            description: `${matched.nombre} (SKU: ${cleanedSku})`,
+            variant: 'success'
+          });
+          onDetected(matched);
+          onClose();
+        } else {
+          toast({
+            title: 'Código no registrado',
+            description: `Código escaneado: ${cleanedSku}. No coincide con ningún producto.`,
+
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error during auto-scan api execution:', err);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [isScanning, isAnalyzing, productos, onDetected, onClose, toast]);
+
+  // Background auto-scan interval
+  useEffect(() => {
+    if (!open || activeTab !== 'camera' || !isScanning || isAnalyzing) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      captureAndScan();
+    }, 2200); // scan every 2.2 seconds
 
     return () => {
-      isMounted = false;
-      if (html5QrCode && html5QrCode.isScanning) {
-        html5QrCode.stop().catch((err: any) => {
-          console.error("Error stopping scanner:", err);
-        });
-      }
+      clearInterval(intervalId);
     };
-  }, [open, activeTab]);
+  }, [open, activeTab, isScanning, isAnalyzing, captureAndScan]);
 
-  const handleCodeFound = (code: string) => {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate(100);
-    }
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualSku.trim()) return;
 
-    const cleanedCode = code.trim();
+    const cleanedCode = manualSku.trim();
     const product = productos.find(p => p.sku && p.sku.trim() === cleanedCode);
 
     if (product) {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(100);
+      }
       toast({
         title: 'Producto Detectado',
         description: `${product.nombre} (SKU: ${cleanedCode})`,
@@ -187,12 +246,6 @@ export function BarcodeScannerModal({
         variant: 'destructive'
       });
     }
-  };
-
-  const handleManualSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!manualSku.trim()) return;
-    handleCodeFound(manualSku);
   };
 
   const manualInputRef = useRef<HTMLInputElement>(null);
@@ -222,7 +275,7 @@ export function BarcodeScannerModal({
               <TabsList className="grid grid-cols-2 gap-2 bg-muted/30 dark:bg-muted/10 p-1 rounded-xl mb-5 border border-border/10">
                 <TabsTrigger value="camera" className="rounded-lg text-xs font-bold py-2.5 flex items-center justify-center gap-1.5">
                   <Camera className="h-4 w-4" />
-                  Cámara Lector
+                  Cámara Lector (IA)
                 </TabsTrigger>
                 <TabsTrigger value="manual" className="rounded-lg text-xs font-bold py-2.5 flex items-center justify-center gap-1.5">
                   <Keyboard className="h-4 w-4" />
@@ -232,11 +285,14 @@ export function BarcodeScannerModal({
 
               <TabsContent value="camera" className="mt-0 outline-none">
                 <div className="relative w-full h-[280px] bg-black rounded-2xl overflow-hidden border border-border/20 shadow-inner">
-                  
-                  {/* Container for html5-qrcode video mounting */}
-                  <div 
-                    id="reader" 
-                    className="w-full h-full overflow-hidden [&_video]:!w-full [&_video]:!h-full [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full"
+
+                  {/* Camera Video Stream */}
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={`w-full h-full object-cover ${cameraPermission === 'granted' ? 'block' : 'hidden'}`}
                   />
 
                   {/* Pending state overlay */}
@@ -266,42 +322,54 @@ export function BarcodeScannerModal({
                       {/* Scanning visual overlay */}
                       <div className="absolute inset-0 border-[24px] border-black/40 pointer-events-none flex items-center justify-center">
                         {/* Target frame */}
-                        <div className="w-full h-full max-w-[280px] max-h-[160px] border-2 border-primary/60 rounded-xl relative shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+                        <div className={`w-full h-full max-w-[280px] max-h-[160px] border-2 ${isAnalyzing ? 'border-amber-500/80 shadow-[0_0_15px_rgba(245,158,11,0.4)]' : 'border-primary/60 shadow-[0_0_15px_rgba(0,0,0,0.5)]'} rounded-xl relative transition-all duration-300`}>
                           {/* Corner markers */}
-                          <div className="absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 border-primary rounded-tl-md" />
-                          <div className="absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 border-primary rounded-tr-md" />
-                          <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 border-primary rounded-bl-md" />
-                          <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-primary rounded-br-md" />
-                          
-                          {/* Animated red laser line */}
+                          <div className={`absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 ${isAnalyzing ? 'border-amber-500' : 'border-primary'} rounded-tl-md transition-colors duration-300`} />
+                          <div className={`absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 ${isAnalyzing ? 'border-amber-500' : 'border-primary'} rounded-tr-md transition-colors duration-300`} />
+                          <div className={`absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 ${isAnalyzing ? 'border-amber-500' : 'border-primary'} rounded-bl-md transition-colors duration-300`} />
+                          <div className={`absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 ${isAnalyzing ? 'border-amber-500' : 'border-primary'} rounded-br-md transition-colors duration-300`} />
+
+                          {/* Animated laser line */}
                           <motion.div
                             animate={{
                               top: ['5%', '95%', '5%'],
                             }}
                             transition={{
-                              duration: 2.5,
+                              duration: isAnalyzing ? 1.2 : 2.5,
                               repeat: Infinity,
                               ease: 'easeInOut',
                             }}
-                            className="absolute left-[5%] right-[5%] h-0.5 bg-red-500 shadow-[0_0_8px_#ef4444] rounded-full pointer-events-none"
+                            className={`absolute left-[5%] right-[5%] h-0.5 ${isAnalyzing ? 'bg-amber-500 shadow-[0_0_8px_#f59e0b]' : 'bg-red-500 shadow-[0_0_8px_#ef4444]'} rounded-full pointer-events-none transition-colors duration-300`}
                           />
                         </div>
                       </div>
 
                       {/* Mode indication with green pulsing dot */}
                       <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-md text-[9px] font-black tracking-widest text-white/90 border border-white/10 flex items-center gap-1.5 z-20">
-                        <span className="relative flex h-1.5 w-1.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                        </span>
-                        <span>LECTOR ACTIVO</span>
+                        {isAnalyzing ? (
+                          <>
+                            <span className="relative flex h-1.5 w-1.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
+                            </span>
+                            <span>ANALIZANDO CÓDIGO...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="relative flex h-1.5 w-1.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                            </span>
+                            <span>IA AUTO-ESCÁNER ACTIVO</span>
+                          </>
+                        )}
                       </div>
                     </>
                   )}
                 </div>
-                
+
                 <p className="text-[10px] text-center mt-3 text-muted-foreground font-medium">
-                  Apunta al código de barras. La lectura se realizará de forma local e instantánea.
+                  Apunta al código de barras en el centro. El sistema lo escaneará automáticamente con la IA en segundo plano.
                 </p>
               </TabsContent>
 

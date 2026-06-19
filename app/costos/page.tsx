@@ -3,13 +3,15 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, writeBatch, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Producto } from '@/lib/types/pos';
+import { Producto, ConsultaIALog } from '@/lib/types/pos';
 import { CostosService } from '@/lib/services/costos.service';
+import { AIService } from '@/lib/services/ai.service';
 import { AppNav } from '@/components/layout/app-nav';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { formatCLPCurrency, roundToChileanDecena } from '@/lib/utils';
 import { 
@@ -47,6 +49,7 @@ function CostosPage() {
 
   // AI assistant states
   const [aiContexto, setAiContexto] = useState('');
+  const [marketingProductId, setMarketingProductId] = useState<string>('todos');
   const [aiRespuesta, setAiRespuesta] = useState<string | null>(null);
   const [aiCargando, setAiCargando] = useState(false);
 
@@ -83,6 +86,23 @@ function CostosPage() {
 
     return () => unsubscribe();
   }, []);
+
+  // AI chat logs for persistent memory
+  const [chatLogs, setChatLogs] = useState<ConsultaIALog[]>([]);
+
+  const cargarHistorialIA = async (productId?: string) => {
+    try {
+      const prodId = productId === 'todos' ? undefined : productId;
+      const history = await AIService.obtenerHistorial('marketing', prodId, 10);
+      setChatLogs(history);
+    } catch (err) {
+      console.error('Error al cargar historial de marketing IA:', err);
+    }
+  };
+
+  useEffect(() => {
+    cargarHistorialIA(marketingProductId);
+  }, [marketingProductId]);
 
   // Expiration math helper
   const obtenerDiasParaVencer = (fechaCaducidad: string) => {
@@ -301,11 +321,18 @@ function CostosPage() {
   };
 
   // General marketing AI suggestions
-  const handleGenerarMarketingIA = async () => {
+  const handleGenerarMarketingIA = async (overridePregunta?: string) => {
     setAiCargando(true);
     setAiRespuesta(null);
 
-    const payloadProductos = productos.map(p => ({
+    const preguntaFinal = (overridePregunta || aiContexto || '').trim();
+
+    let filteredProductos = productos;
+    if (marketingProductId !== 'todos') {
+      filteredProductos = productos.filter(p => p.id === marketingProductId);
+    }
+
+    const payloadProductos = filteredProductos.map(p => ({
       nombre: p.nombre,
       stock_actual: p.stock_actual,
       unidad: p.unidad,
@@ -320,7 +347,9 @@ function CostosPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productos: payloadProductos,
-          contexto: aiContexto
+          contexto: preguntaFinal,
+          productoEspecifico: marketingProductId !== 'todos',
+          historial: chatLogs.map(log => ({ pregunta: log.pregunta, respuesta: log.respuesta }))
         }),
       });
 
@@ -328,6 +357,21 @@ function CostosPage() {
       if (!res.ok) throw new Error(data.error || 'Error al conectar con la IA.');
 
       setAiRespuesta(data.sugerencias);
+
+      // Persist the query in Firestore
+      await AIService.registrarConsulta({
+        tipo_asistente: 'marketing',
+        pregunta: preguntaFinal || (marketingProductId !== 'todos' ? `Análisis de marketing para ${productos.find(p => p.id === marketingProductId)?.nombre}` : 'Análisis general de catálogo'),
+        respuesta: data.sugerencias,
+        productos_vinculados: marketingProductId !== 'todos' ? [marketingProductId] : []
+      });
+
+      // Clear input
+      setAiContexto('');
+
+      // Reload chat logs
+      await cargarHistorialIA(marketingProductId);
+
       toast({
         title: 'Recomendaciones listas',
         description: 'Gemini ha terminado de analizar tu negocio.',
@@ -399,6 +443,15 @@ ${vencidosONear.map(p => {
       if (!res.ok) throw new Error(data.error || 'Error al conectar con la IA.');
 
       setAiRespuestaVencidos(data.sugerencias);
+
+      // Persist in Firestore
+      await AIService.registrarConsulta({
+        tipo_asistente: 'marketing',
+        pregunta: 'Generar plan de liquidación para productos vencidos o próximos a vencer',
+        respuesta: data.sugerencias,
+        productos_vinculados: vencidosONear.map(p => p.id)
+      });
+
       toast({
         title: 'Plan de liquidación listo',
         description: 'Gemini ha elaborado las ofertas de liquidación.',
@@ -467,7 +520,7 @@ ${vencidosONear.map(p => {
   return (
     <div className="min-h-screen bg-background">
       <AppNav />
-      <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-screen-2xl px-3 sm:px-6 py-6">
         
         {/* Page Header */}
         <header className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -833,82 +886,179 @@ ${vencidosONear.map(p => {
 
               {/* AI Assistant */}
               <div className="space-y-6">
-                <Card className="rounded-[2rem] border-indigo-500/20 shadow-md bg-card/60 backdrop-blur-sm overflow-hidden relative">
-                  <div className="absolute top-0 right-0 p-4 opacity-10">
+                <Card className="rounded-[2rem] border-indigo-500/20 shadow-md bg-card/60 backdrop-blur-sm overflow-hidden relative flex flex-col h-[650px]">
+                  <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
                     <Sparkles className="h-24 w-24 text-indigo-500" />
                   </div>
 
-                  <CardHeader className="border-b border-border/40 bg-gradient-to-r from-indigo-500/5 to-purple-500/5 px-5">
+                  <CardHeader className="border-b border-border/40 bg-gradient-to-r from-indigo-500/5 to-purple-500/5 px-5 py-4 shrink-0">
                     <div className="flex items-center gap-2">
                       <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-500 dark:text-indigo-400">
                         <Sparkles className="h-4 w-4" />
                       </div>
                       <div>
-                        <CardTitle className="text-lg font-bold">Asistente de Marketing</CardTitle>
+                        <CardTitle className="text-base font-bold">Asistente de Marketing</CardTitle>
                         <CardDescription className="text-[10px] uppercase font-black opacity-60">Sugerencias Inteligentes Gemini</CardDescription>
                       </div>
                     </div>
                   </CardHeader>
 
-                  <CardContent className="p-5 space-y-5">
-                    <div className="space-y-2">
-                      <Label htmlFor="contexto" className="text-xs font-bold">Instrucciones o Contexto del Negocio</Label>
-                      <textarea
-                        id="contexto"
-                        rows={4}
-                        placeholder="Ej: 'Quiero liquidar las manzanas porque hay mucho stock' o 'Es fin de semana largo y quiero aumentar ventas en picoteos'."
-                        value={aiContexto}
-                        onChange={(e) => setAiContexto(e.target.value)}
-                        className="w-full p-3 rounded-2xl border border-border/60 text-[16px] md:text-xs bg-background/50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium leading-relaxed resize-none"
-                      />
+                  <CardContent className="p-4 space-y-4 flex-1 flex flex-col min-h-0 overflow-hidden">
+                    <div className="space-y-1.5 shrink-0">
+                      <Label htmlFor="marketing-product" className="text-[11px] font-bold opacity-75">Seleccionar Alcance del Análisis</Label>
+                      <select
+                        id="marketing-product"
+                        value={marketingProductId}
+                        onChange={(e) => setMarketingProductId(e.target.value)}
+                        className="w-full p-2.5 rounded-xl border border-border/60 text-xs bg-background/50 dark:bg-card/40 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-bold text-foreground"
+                      >
+                        <option value="todos">📊 Analizar Catálogo Completo (Todos los Productos)</option>
+                        {productos.map(p => (
+                          <option key={p.id} value={p.id}>
+                            📦 {p.nombre} {p.sku ? `(SKU: ${p.sku})` : ''} - Stock: {p.stock_actual.toFixed(2)} {p.unidad}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
-                    <Button
-                      onClick={handleGenerarMarketingIA}
-                      disabled={aiCargando || productos.length === 0}
-                      className="w-full rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-bold text-xs shadow-md shadow-indigo-500/10 h-11"
-                    >
-                      {aiCargando ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Analizando costos y rentabilidad...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="mr-2 h-4 w-4" />
-                          Generar Estrategias con IA
-                        </>
-                      )}
-                    </Button>
-
-                    <AnimatePresence>
-                      {(aiRespuesta || aiCargando) && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 15 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -15 }}
-                          className="rounded-2xl border border-border bg-background/40 p-4 max-h-[480px] overflow-y-auto custom-scrollbar"
-                        >
-                          {aiCargando ? (
-                            <div className="space-y-3 py-6 text-center text-xs text-muted-foreground font-semibold">
-                              <Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-500 mb-2" />
-                              <span>Gemini está analizando tu catálogo...</span>
+                    <ScrollArea className="flex-1 pr-1 -mr-1">
+                      <div className="space-y-4 pb-4">
+                        {/* Chat history */}
+                        {chatLogs.map((log) => (
+                          <div key={log.id} className="space-y-2.5">
+                            {/* User query */}
+                            <div className="flex justify-end">
+                              <div className="bg-indigo-600 text-white rounded-2xl px-3.5 py-2 text-xs font-semibold max-w-[85%] shadow-sm">
+                                <p className="font-bold text-[8px] uppercase tracking-wider opacity-75 mb-0.5">Tú</p>
+                                {log.pregunta}
+                              </div>
                             </div>
-                          ) : (
-                            <div className="prose prose-sm dark:prose-invert">
-                              {renderMarkdown(aiRespuesta || '')}
-                            </div>
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
 
-                    {!aiRespuesta && !aiCargando && (
-                      <div className="rounded-2xl border border-dashed border-border/60 p-6 text-center text-xs text-muted-foreground font-medium">
-                        <AlertCircle className="h-5 w-5 mx-auto text-muted-foreground/60 mb-2" />
-                        Haz click arriba para generar ideas de venta para hoy basadas en la rentabilidad de tus precios.
+                            {/* Assistant response */}
+                            <div className="flex justify-start">
+                              <div className="bg-background/85 dark:bg-card/90 border border-border/60 rounded-2xl px-4 py-3 text-xs text-muted-foreground max-w-[85%] shadow-sm prose prose-sm dark:prose-invert">
+                                <p className="font-black text-[8px] uppercase tracking-wider text-indigo-500 mb-1 flex items-center gap-1">
+                                  <Sparkles className="h-3 w-3 animate-pulse" />
+                                  Asistente de Marketing
+                                </p>
+                                <div className="leading-relaxed whitespace-pre-wrap">
+                                  {renderMarkdown(log.respuesta)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Current streaming/unsaved response */}
+                        {aiRespuesta && !chatLogs.some(log => log.respuesta === aiRespuesta) && (
+                          <div className="space-y-2.5">
+                            <div className="flex justify-start">
+                              <div className="bg-background/85 dark:bg-card/90 border border-border/60 rounded-2xl px-4 py-3 text-xs text-muted-foreground max-w-[85%] shadow-sm prose prose-sm dark:prose-invert">
+                                <p className="font-black text-[8px] uppercase tracking-wider text-indigo-500 mb-1 flex items-center gap-1">
+                                  <Sparkles className="h-3 w-3 animate-pulse" />
+                                  Asistente de Marketing
+                                </p>
+                                <div className="leading-relaxed whitespace-pre-wrap">
+                                  {renderMarkdown(aiRespuesta)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Loader when generating */}
+                        {aiCargando && (
+                          <div className="flex justify-start">
+                            <div className="bg-background/85 dark:bg-card/90 border border-border/60 rounded-2xl px-4 py-3 text-xs text-muted-foreground max-w-[85%] shadow-sm flex items-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
+                              <span className="font-semibold text-xs">Analizando rentabilidad y generando estrategias...</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {chatLogs.length === 0 && !aiRespuesta && !aiCargando && (
+                          <div className="text-center py-10 text-muted-foreground space-y-2">
+                            <Sparkles className="h-8 w-8 mx-auto opacity-30 text-indigo-500" />
+                            <p className="font-bold text-xs">¿Cómo puedo ayudarte con tu marketing hoy?</p>
+                            <p className="text-[10px] opacity-75 max-w-xs mx-auto">Selecciona una sugerencia rápida o escribe tu instrucción personalizada abajo.</p>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </ScrollArea>
+
+                    {/* Suggestions Area */}
+                    <div className="space-y-2 shrink-0 pt-2 border-t border-border/40">
+                      <div className="flex flex-wrap gap-1.5 justify-center">
+                        {marketingProductId === 'todos' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleGenerarMarketingIA('Analizar el inventario completo y sugerir estrategias de precios para mejorar rentabilidad')}
+                              className="px-2.5 py-1.5 text-[9px] font-bold border rounded-lg bg-background/65 hover:bg-indigo-500/5 border-border/70 text-foreground transition-all duration-200 flex items-center gap-1"
+                            >
+                              <Sparkles className="h-3 w-3 text-indigo-500" />
+                              Estrategias de Precios
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleGenerarMarketingIA('Proponer 3 combos promocionales cruzados (cross-selling) atractivos con los productos actuales')}
+                              className="px-2.5 py-1.5 text-[9px] font-bold border rounded-lg bg-background/65 hover:bg-indigo-500/5 border-border/70 text-foreground transition-all duration-200 flex items-center gap-1"
+                            >
+                              <Sparkles className="h-3 w-3 text-purple-500" />
+                              Combos de Productos
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleGenerarMarketingIA('¿Cómo puedo aumentar rápidamente la rotación de stock de este producto en el local?')}
+                              className="px-2.5 py-1.5 text-[9px] font-bold border rounded-lg bg-background/65 hover:bg-indigo-500/5 border-border/70 text-foreground transition-all duration-200 flex items-center gap-1"
+                            >
+                              <Sparkles className="h-3 w-3 text-indigo-500" />
+                              Aumentar Rotación
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleGenerarMarketingIA('Diseña un cartel promocional creativo y copia persuasiva para este producto')}
+                              className="px-2.5 py-1.5 text-[9px] font-bold border rounded-lg bg-background/65 hover:bg-indigo-500/5 border-border/70 text-foreground transition-all duration-200 flex items-center gap-1"
+                            >
+                              <Sparkles className="h-3 w-3 text-purple-500" />
+                              Diseñar Cartel/Promo
+                            </button>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Text Input area */}
+                      <div className="flex gap-2 items-center">
+                        <textarea
+                          id="contexto"
+                          rows={1}
+                          placeholder={
+                            marketingProductId === 'todos'
+                              ? "Ej: 'Fin de semana largo y quiero aumentar ventas...'"
+                              : "Ej: 'Sugerir precio rentable si el proveedor aumentó 10%...'"
+                          }
+                          value={aiContexto}
+                          onChange={(e) => setAiContexto(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleGenerarMarketingIA();
+                            }
+                          }}
+                          className="flex-1 p-2.5 rounded-xl border border-border/60 text-xs bg-background/50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium leading-relaxed resize-none text-foreground"
+                        />
+                        <Button
+                          onClick={() => handleGenerarMarketingIA()}
+                          disabled={aiCargando || productos.length === 0}
+                          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-3.5 shrink-0"
+                        >
+                          Enviar
+                        </Button>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               </div>

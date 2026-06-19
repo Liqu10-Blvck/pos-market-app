@@ -104,7 +104,7 @@ function ClientesPage() {
       <AppNav />
       
       <section className="border-b border-border/40 bg-card/40 backdrop-blur-xl">
-        <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-screen-2xl px-3 sm:px-6 py-6">
           <div className="flex min-h-[72px] flex-col justify-center gap-1.5 sm:min-h-[84px]">
             <h1 className="flex items-center gap-3 text-2xl font-black text-primary sm:text-3xl tracking-tight">
               <Users className="h-8 w-8 shrink-0" />
@@ -117,7 +117,7 @@ function ClientesPage() {
         </div>
       </section>
 
-      <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+      <div className="mx-auto w-full max-w-screen-2xl px-3 sm:px-6 py-4 sm:py-6">
         <div className="mb-8 relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input

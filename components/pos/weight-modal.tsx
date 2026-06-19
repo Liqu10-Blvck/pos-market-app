@@ -41,7 +41,8 @@ export function WeightModal({ producto, open, onClose, onAgregar }: WeightModalP
 
   const esVentaCaja = modoVenta === 'caja';
   const esKg = producto.unidad === 'kg' && !esVentaCaja;
-  const unitLabel = esVentaCaja ? 'Caja(s)' : (producto.unidad === 'kg' ? 'kg' : 'unid');
+  const empaqueLabel = producto.tipo_empaque || 'Caja';
+  const unitLabel = esVentaCaja ? `${empaqueLabel}(s)` : (producto.unidad === 'kg' ? 'kg' : 'unid');
   
   const calcularNeto = () => {
     if (esKg) {
@@ -68,12 +69,17 @@ export function WeightModal({ producto, open, onClose, onAgregar }: WeightModalP
 
     const item: ItemVenta = {
       producto_id: producto.id,
-      nombre: esVentaCaja ? `${producto.nombre} (Caja)` : producto.nombre,
+      nombre: esVentaCaja ? `${producto.nombre} (${empaqueLabel})` : producto.nombre,
       precio_unitario: precioActual,
       unidad: esVentaCaja ? 'unid' : producto.unidad,
       neto,
       total,
-      ...(esVentaCaja ? { es_caja: true, cantidad_por_caja: producto.cantidad_por_caja } : {})
+      facturable: producto.facturable !== false,
+      ...(esVentaCaja ? { 
+        es_caja: true, 
+        cantidad_por_caja: producto.cantidad_por_caja,
+        tipo_empaque: empaqueLabel
+      } : {})
     };
 
     if (esKg) {
@@ -125,7 +131,7 @@ export function WeightModal({ producto, open, onClose, onAgregar }: WeightModalP
                 </div>
                 <Badge variant="secondary" className="font-bold text-xs h-8 px-3 bg-muted dark:bg-muted/50 text-foreground border-border/40">
                   Stock: {producto.stock_actual.toFixed(2)} {producto.unidad}
-                  {producto.cantidad_por_caja && producto.cantidad_por_caja > 0 ? ` (~${(producto.stock_actual / producto.cantidad_por_caja).toFixed(1)} Cajas)` : ''}
+                  {producto.cantidad_por_caja && producto.cantidad_por_caja > 0 ? ` (~${(producto.stock_actual / producto.cantidad_por_caja).toFixed(1)} ${empaqueLabel}s)` : ''}
                 </Badge>
               </DialogHeader>
 
@@ -178,7 +184,7 @@ export function WeightModal({ producto, open, onClose, onAgregar }: WeightModalP
                       : 'text-muted-foreground hover:bg-background/40'
                   }`}
                 >
-                  Caja Completa ({producto.cantidad_por_caja} {producto.unidad})
+                  {empaqueLabel} Completa ({producto.cantidad_por_caja} {producto.unidad})
                 </button>
               </div>
             )}

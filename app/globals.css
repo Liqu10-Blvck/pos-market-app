@@ -131,6 +131,20 @@
 }
 
 @layer utilities {
+  /* Standard app-wide container — used on every page for consistent full-width layout */
+  .app-container {
+    width: 100%;
+    max-width: 1536px; /* screen-2xl equivalent */
+    margin-inline: auto;
+    padding-inline: 0.75rem; /* px-3 */
+  }
+
+  @media (min-width: 640px) {
+    .app-container {
+      padding-inline: 1.5rem; /* sm:px-6 */
+    }
+  }
+
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
     height: 6px;

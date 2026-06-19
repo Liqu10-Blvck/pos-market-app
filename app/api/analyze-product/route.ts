@@ -28,22 +28,33 @@ export async function POST(req: NextRequest) {
     const genAI = new GoogleGenerativeAI(apiKey);
     // Usar el modelo gemini-2.5-flash para análisis multimodal de alta velocidad
     const model = genAI.getGenerativeModel({
-      model: 'gemini-3.1-flash-lite',
+      model: 'gemini-2.5-flash',
       generationConfig: {
         responseMimeType: 'application/json'
       }
     });
 
     const prompt = `
-Analiza la o las imágenes de este producto de abarrotes. Tu tarea es extraer la información relevante para crear el producto en un sistema de inventario (POS).
-Se te pueden proporcionar múltiples fotos del mismo producto desde diferentes ángulos (por ejemplo, el frente para la marca/nombre, el código de barras, y la fecha de caducidad). Integra la información de todas las fotos.
+Analiza la o las imágenes de este producto de abarrotes o documento de cotización/factura de compra. Tu tarea es extraer la información relevante para crear o reponer el producto en un sistema de inventario (POS).
+Se te pueden proporcionar fotos del envase del producto (por ejemplo, el frente, el código de barras, etc.) o fotos del documento comercial (factura, cotización o recibo de compra). Integra la información disponible.
+
+CRITICAL PARA PRODUCTOS A GRANEL O VENDIDOS POR PESO (KILOGRAMOS):
+Si identificas un producto como papas, cebollas, zanahorias, frutas o verduras que típicamente se compran en formatos grandes (sacos, mallas, cajas de madera) pero se venden al detalle por kilo:
+1. El precio/costo del saco entero (ej. $10.000 por un saco de 25kg) debe asignarse a "costo_caja".
+2. La cantidad de kilos del saco (ej. 25) debe ir en "cantidad_por_caja".
+3. El "costo_unitario" (costo por kilo) debe ser calculado dividiendo el costo del saco por la cantidad de kilos (ej. 10000 / 25 = 400 pesos por kilo). NUNCA dejes el costo del saco entero en "costo_unitario", de lo contrario se asumirá que el kilo cuesta $10.000 pesos.
 
 Debes devolver únicamente un objeto JSON con las siguientes propiedades exactas:
 
-- "nombre": El nombre comercial exacto y completo del producto (por ejemplo, "Leche Entera Soprole 1L" o "Fideos Carozzi Espiral 400g"). Intenta incluir marca, tipo y tamaño/peso si es visible en alguna de las imágenes.
-- "sku": Si hay un código de barras impreso en el envase visible en alguna de las imágenes, detecta el número (suele ser un número EAN-13 de 13 dígitos o UPC de 12 dígitos) y devuélvelo como un string de dígitos. Si no está visible o no se puede leer, devuelve null.
-- "fecha_caducidad": Si en el envase se muestra impresa la fecha de vencimiento/caducidad (buscando textos como "VENCE:", "VAL:", "EXP:", "F. VENC:", etc. en cualquiera de las imágenes), detecta el día, mes y año y devuélvelo formateado estrictamente como "YYYY-MM-DD". Si no se ve la fecha, o el producto es fresco y no tiene fecha de caducidad estricta impresa en el envase, devuelve null.
-- "tiene_vencimiento": Un booleano (true o false) que indica si este tipo de producto tiene una fecha de caducidad física impresa normalmente en el envase (por ejemplo, los abarrotes como leche, yogur o conservas tienen vencimiento, mientras que frutas y verduras frescas o sal de mesa no suelen tener vencimiento estricto).
+- "nombre": El nombre comercial exacto y completo del producto (por ejemplo, "Leche Entera Soprole 1L" o "Fideos Carozzi Espiral 400g"). Si la imagen es una cotización o factura, extrae el nombre del artículo.
+- "sku": Si hay un código de barras visible en las fotos del envase o un código SKU en el documento de compra, detecta el número y devuélvelo como un string de dígitos. Si no, devuelve null.
+- "fecha_caducidad": Si en el envase o documento se muestra impresa la fecha de vencimiento, detecta el día, mes y año y devuélvelo formateado estrictamente como "YYYY-MM-DD". Si no, devuelve null.
+- "tiene_vencimiento": Un booleano (true o false) que indica si este tipo de producto tiene una fecha de caducidad física normalmente (los lácteos, embutidos y conservas tienen vencimiento; las frutas, verduras o sal no).
+- "tipo_empaque": El tipo de empaque o contenedor del producto detectado ("Caja", "Saco", "Malla", "Bandeja", "Paquete" o null si no se puede determinar).
+- "cantidad_por_caja": La cantidad de unidades o kilogramos que contiene el empaque completo (por ejemplo, 12 si es una caja de 12 litros de leche, o 25 si es un saco de 25 kg. Si es un documento de compra, lee la cantidad por bulto especificada. Si no, devuelve null).
+- "costo_caja": El costo total del empaque o caja completa (número entero, por ejemplo, el costo del saco o de la caja de 12 unidades). Si es visible en la cotización/factura, extráelo. Si no, devuelve null.
+- "costo_unitario": El costo unitario neto de cada unidad o kilogramo individual (ej. costo por kg si es fruta/verdura). Si no viene explícito pero tienes el costo de la caja y la cantidad por caja, divídelos y redondéalo a entero. Si no, devuelve null.
+- "precio_sugerido_unidad": El precio de venta sugerido al público por unidad o kilogramo individual, si es visible o si es sugerido en el documento. Si no, devuelve null.
 
 Recuerda: Tu respuesta debe ser estrictamente un objeto JSON válido que coincida con este esquema, sin bloques de código de markdown ni explicaciones adicionales.
 `;

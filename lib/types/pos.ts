@@ -18,6 +18,9 @@ export interface Producto {
   es_interes?: boolean;
   cantidad_por_caja?: number;
   precio_caja?: number;
+  tipo_empaque?: string; // e.g. 'Caja', 'Saco', 'Malla', 'Bandeja'
+  facturable?: boolean;
+  imagen_factura_url?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -34,6 +37,8 @@ export interface ItemVenta {
   total: number;
   es_caja?: boolean;
   cantidad_por_caja?: number;
+  tipo_empaque?: string; // e.g. 'Caja', 'Saco', 'Malla'
+  facturable?: boolean;
 }
 
 export interface Venta {
@@ -96,4 +101,13 @@ export interface CostoDiario {
   costo: number;
   fecha: Timestamp;
   createdAt: Timestamp;
+}
+
+export interface ConsultaIALog {
+  id?: string;
+  tipo_asistente: 'marketing' | 'contabilidad' | 'general';
+  pregunta: string;
+  respuesta: string;
+  productos_vinculados: string[];
+  fecha: Timestamp;
 }

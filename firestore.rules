@@ -48,6 +48,28 @@ service cloud.firestore {
       allow create, update, delete: if isAuthenticated();
     }
     
+    // Cuentas contables: Lectura y escritura para autenticados
+    match /cuentas/{cuentaCodigo} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Asientos contables: Lectura y creación para autenticados
+    match /asientos/{asientoId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+    
+    // Facturas de compras: Lectura y creación para autenticados
+    match /compras/{compraId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+    
+    // Consultas e historial IA: Lectura y escritura para autenticados
+    match /consultas_ia/{consultaId} {
+      allow read, write: if isAuthenticated();
+    }
+    
     // Metadata: Lectura y escritura para autenticados
     match /metadata/{documentId} {
       allow read, write: if isAuthenticated();

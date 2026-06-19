@@ -96,7 +96,7 @@ function InicioPage() {
     <div className="min-h-screen bg-background">
       <AppNav />
 
-      <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-screen-2xl px-3 sm:px-6 py-8">
         {/* Welcome Header */}
         <header className="mb-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-2">

@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Venta, ItemVenta, Producto, Cliente, MetodoPago } from '../types/pos';
+import { ContabilidadService } from './contabilidad.service';
 
 export class VentasService {
   private static readonly COLLECTION = 'ventas';
@@ -41,7 +42,7 @@ export class VentasService {
         clienteSnap = await transaction.get(doc(db, this.CLIENTES_COLLECTION, clienteId));
       }
 
-      // Read metadata for sale number transactionally
+      // Read sales metadata transactionally
       const metadataRef = doc(db, 'metadata', 'ventas');
       const metadataSnap = await transaction.get(metadataRef);
       let ultimoNumeroVenta = 0;
@@ -50,7 +51,17 @@ export class VentasService {
       }
       const numeroVenta = ultimoNumeroVenta + 1;
 
+      // Read contabilidad metadata transactionally
+      const metadataContabilidadRef = doc(db, 'metadata', 'contabilidad');
+      const metadataContabilidadSnap = await transaction.get(metadataContabilidadRef);
+      let ultimoNumeroAsiento = 0;
+      if (metadataContabilidadSnap.exists()) {
+        ultimoNumeroAsiento = metadataContabilidadSnap.data().ultimo_numero_asiento || 0;
+      }
+
       // 2. ALL WRITES AFTER
+      let costoTotalVenta = 0;
+
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const snap = productoSnaps[i];
@@ -61,7 +72,8 @@ export class VentasService {
 
         const producto = snap.data() as Producto;
         const multiplicador = item.es_caja && item.cantidad_por_caja ? item.cantidad_por_caja : 1;
-        const nuevoStock = producto.stock_actual - (item.neto * multiplicador);
+        const netoDeducido = item.neto * multiplicador;
+        const nuevoStock = producto.stock_actual - netoDeducido;
         if (nuevoStock < 0) {
           throw new Error(`Stock insuficiente para ${item.nombre}. Disponible: ${producto.stock_actual}`);
         }
@@ -70,6 +82,10 @@ export class VentasService {
           stock_actual: nuevoStock,
           updatedAt: Timestamp.now()
         });
+
+        // Accumulate cost of goods sold
+        const costoProducto = producto.costo_actual || 0;
+        costoTotalVenta += netoDeducido * costoProducto;
       }
 
       let clienteNombre: string | undefined;
@@ -104,6 +120,62 @@ export class VentasService {
       };
 
       transaction.set(ventaRef, ventaData);
+
+      // --- CONTABILIDAD ENTRIES GENERATION ---
+      let netoTotal = 0;
+      let ivaTotal = 0;
+
+      items.forEach(item => {
+        if (item.facturable !== false) {
+          const itemNeto = Math.round(item.total / 1.19);
+          const itemIva = item.total - itemNeto;
+          netoTotal += itemNeto;
+          ivaTotal += itemIva;
+        } else {
+          // Exempt product (Exento de IVA)
+          netoTotal += item.total;
+        }
+      });
+
+      const debitCuentaCodigo = metodoPago === 'efectivo' ? '1.1.01' : 
+                                (metodoPago === 'fiado' ? '1.1.04' : '1.1.02');
+      const debitCuentaNombre = metodoPago === 'efectivo' ? 'Caja' : 
+                                (metodoPago === 'fiado' ? 'Clientes' : 'Banco');
+
+      // Entry A: Sales revenues
+      const movimientosVenta = [
+        { cuenta_codigo: debitCuentaCodigo, cuenta_nombre: debitCuentaNombre, debe: total, haber: 0 },
+        { cuenta_codigo: '4.1.01', cuenta_nombre: 'Ventas', debe: 0, haber: netoTotal },
+        ...(ivaTotal > 0 ? [{ cuenta_codigo: '2.1.01', cuenta_nombre: 'IVA Débito Fiscal', debe: 0, haber: ivaTotal }] : [])
+      ];
+
+      ultimoNumeroAsiento = ContabilidadService.registrarAsientoEnTransaccion(
+        transaction,
+        metadataContabilidadRef,
+        ultimoNumeroAsiento,
+        `Venta POS Boleta N° ${numeroVenta}`,
+        'venta',
+        movimientosVenta,
+        ventaRef.id
+      );
+
+      // Entry B: Cost of goods sold
+      if (costoTotalVenta > 0) {
+        const movimientosCosto = [
+          { cuenta_codigo: '5.1.01', cuenta_nombre: 'Costo de Ventas', debe: Math.round(costoTotalVenta), haber: 0 },
+          { cuenta_codigo: '1.1.03', cuenta_nombre: 'Mercaderías', debe: 0, haber: Math.round(costoTotalVenta) }
+        ];
+
+        ContabilidadService.registrarAsientoEnTransaccion(
+          transaction,
+          metadataContabilidadRef,
+          ultimoNumeroAsiento,
+          `Costo de Ventas Boleta N° ${numeroVenta}`,
+          'venta',
+          movimientosCosto,
+          ventaRef.id
+        );
+      }
 
       return ventaRef.id;
     });

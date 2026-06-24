@@ -2,12 +2,21 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, ShoppingCart, Package, History, LogOut, Users, Sun, Moon, TrendingUp, BookOpen } from 'lucide-react'
+import { Home, ShoppingCart, Package, History, LogOut, Users, User, Sun, Moon, TrendingUp, BookOpen, Loader2, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/auth-context'
 import { motion } from 'framer-motion'
 import { BrandLogo } from '@/components/ui/brand-logo'
 import { useTheme } from 'next-themes'
+
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 
 const items = [
   { href: '/inicio', label: 'Inicio', icon: Home },
@@ -22,7 +31,7 @@ const items = [
 export function AppNav() {
   const pathname = usePathname()
   const router = useRouter()
-  const { logout } = useAuth()
+  const { user, logout } = useAuth()
   const { theme, setTheme } = useTheme()
 
   const handleLogout = async () => {
@@ -76,14 +85,38 @@ export function AppNav() {
             <span className="sr-only">Toggle theme</span>
           </Button>
 
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={handleLogout} 
-            className="h-12 w-12 rounded-2xl bg-destructive/5 text-destructive hover:bg-destructive hover:text-white transition-all duration-300 active:scale-90 shadow-sm"
-          >
-            <LogOut className="h-5 w-5" strokeWidth={2.5} />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-12 w-12 rounded-2xl bg-muted/50 text-foreground hover:bg-muted transition-all duration-300 active:scale-90"
+              >
+                <User className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 rounded-2xl border border-border/50 p-2 shadow-lg bg-popover text-popover-foreground">
+              <DropdownMenuLabel className="px-3 py-2 text-[10px] font-black uppercase text-muted-foreground tracking-wider">
+                Cuenta de Usuario
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator className="my-1 bg-border/40" />
+              <DropdownMenuItem
+                onClick={() => router.push('/configuracion')}
+                className="flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer hover:bg-muted transition-all text-xs font-bold"
+              >
+                <Settings className="h-4 w-4 text-indigo-500" />
+                Configuración
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="my-1 bg-border/40" />
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer hover:bg-destructive/10 text-destructive transition-all text-xs font-bold"
+              >
+                <LogOut className="h-4 w-4" />
+                Cerrar Sesión
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </nav>

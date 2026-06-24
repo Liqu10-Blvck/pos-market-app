@@ -1,18 +1,19 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, getDocs, query, orderBy, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, where, Timestamp, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { AppNav } from '@/components/layout/app-nav';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { formatCLPCurrency, compressImage } from '@/lib/utils';
+import { formatCLPCurrency, compressImage, parseChileanMoneyInput } from '@/lib/utils';
 import { 
   BookOpen, Calendar, DollarSign, PlusCircle, ArrowUpRight, ArrowDownRight, 
   Percent, FileText, Landmark, RefreshCw, ShoppingCart, User, Tag, 
   Trash2, Plus, AlertCircle, FileSpreadsheet, Sparkles, Loader2,
-  Activity, TrendingDown, Target, Eye, Camera, ArrowDown, Info
+  Activity, TrendingDown, Target, Eye, Camera, ArrowDown, Info, Send,
+  ChevronDown, ChevronUp
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -23,19 +24,31 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/lib/auth-context';
 import { ContabilidadService } from '@/lib/services/contabilidad.service';
+import { GastosProgramadosService } from '@/lib/services/gastos-programados.service';
+import { MetasService } from '@/lib/services/metas.service';
+import { DistribucionService } from '@/lib/services/distribucion.service';
 import { CuentaContable, AsientoContable, FacturaCompra, TipoDocumentoCompra, MovimientoContable } from '@/lib/types/contabilidad';
 import { Producto, ConsultaIALog } from '@/lib/types/pos';
 import { AIService } from '@/lib/services/ai.service';
 import { uploadImage } from '@/lib/firebase/storage';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 
 interface RowProductoFactura {
   producto_id: string;
   nombre: string;
   cantidad: number;
   costo_unitario: number;
+  cantidad_por_caja?: number;
 }
+
+const calcPct = (actual: number, objetivo: number) => {
+  if (!objetivo) return 0;
+  return Math.min(100, Math.round((actual / objetivo) * 100));
+};
+
+
 
 function ContabilidadPage() {
   const [activeTab, setActiveTab] = useState('resumen');
@@ -60,6 +73,33 @@ function ContabilidadPage() {
   const [gastoGlosa, setGastoGlosa] = useState('');
   const [gastoMonto, setGastoMonto] = useState('');
   const [gastoMetodo, setGastoMetodo] = useState<'efectivo' | 'transferencia'>('efectivo');
+
+  // Gastos Programados, Metas y Distribucion
+  const { user } = useAuth();
+  const [gastosProgramados, setGastosProgramados] = useState<any[]>([]);
+  const [metasFinancieras, setMetasFinancieras] = useState<any[]>([]);
+  const [historialDistribucion, setHistorialDistribucion] = useState<any[]>([]);
+  const [fondosAsignados, setFondosAsignados] = useState({ caja: 0, banco: 0 });
+  const [tipoGastoRegistro, setTipoGastoRegistro] = useState<'directo' | 'programado'>('directo');
+
+  // Program Expense Form
+  const [progConcepto, setProgConcepto] = useState('');
+  const [progMonto, setProgMonto] = useState('');
+  const [progFecha, setProgFecha] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+
+  // Savings Goal Form
+  const [metaAhorroNombre, setMetaAhorroNombre] = useState('');
+  const [metaAhorroMonto, setMetaAhorroMonto] = useState('');
+  const [metaAhorroFecha, setMetaAhorroFecha] = useState('');
+
+  // Distribution Modal State
+  const [distribucionOpen, setDistribucionOpen] = useState(false);
+  const [distribucionMonto, setDistribucionMonto] = useState('');
+  const [distribucionOrigen, setDistribucionOrigen] = useState<'caja' | 'banco'>('caja');
+  const [distribucionDestinoTipo, setDistribucionDestinoTipo] = useState<'gasto' | 'meta_financiera'>('gasto');
+  const [distribucionDestinoId, setDistribucionDestinoId] = useState('');
+  const [distribucionDestinoNombre, setDistribucionDestinoNombre] = useState('');
+  const [ejecutandoDistribucion, setEjecutandoDistribucion] = useState(false);
 
   // Purchase Invoice Dialog State
   const [facturaOpen, setFacturaOpen] = useState(false);
@@ -134,6 +174,84 @@ function ContabilidadPage() {
   const [velocidadesVenta, setVelocidadesVenta] = useState<{ [productoId: string]: number }>({});
   const [selectedFactura, setSelectedFactura] = useState<FacturaCompra | null>(null);
   const [facturaDetalleOpen, setFacturaDetalleOpen] = useState(false);
+
+  // Grouped purchases states & memo
+  const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
+
+  const facturasAgrupadasPorDia = useMemo(() => {
+    const grupos: { [key: string]: { fechaKey: string; fechaDisplay: Date; facturas: FacturaCompra[]; total: number } } = {};
+    
+    facturas.forEach(f => {
+      const dateObj = f.fecha.toDate();
+      const key = format(dateObj, 'yyyy-MM-dd');
+      if (!grupos[key]) {
+        grupos[key] = {
+          fechaKey: key,
+          fechaDisplay: dateObj,
+          facturas: [],
+          total: 0
+        };
+      }
+      grupos[key].facturas.push(f);
+      grupos[key].total += f.total;
+    });
+
+    // Sort days descending
+    return Object.values(grupos).sort((a, b) => b.fechaDisplay.getTime() - a.fechaDisplay.getTime());
+  }, [facturas]);
+
+  // Subir imagen desde el modal de detalle
+  const [subiendoImagenDetalle, setSubiendoImagenDetalle] = useState(false);
+  const fileInputDetalleRef = useRef<HTMLInputElement>(null);
+
+  const handleAgregarImagenDetalle = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !selectedFactura) return;
+    const file = files[0];
+    if (!file.type.startsWith('image/')) return;
+
+    try {
+      setSubiendoImagenDetalle(true);
+      const storagePath = `facturas/compra_${selectedFactura.id}_${Date.now()}.jpg`;
+      const uploadedUrl = await uploadImage(storagePath, file);
+
+      // Update in Firestore
+      const docRef = doc(db, 'compras', selectedFactura.id);
+      await updateDoc(docRef, { imagen_factura_url: uploadedUrl });
+
+      // Update locally in selectedFactura state
+      setSelectedFactura(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          imagen_factura_url: uploadedUrl
+        };
+      });
+
+      // Update in facturas list state
+      setFacturas(prev => prev.map(f => {
+        if (f.id === selectedFactura.id) {
+          return { ...f, imagen_factura_url: uploadedUrl };
+        }
+        return f;
+      }));
+
+      toast({
+        title: 'Imagen guardada',
+        description: 'El comprobante ha sido adjuntado con éxito.',
+        variant: 'default'
+      });
+    } catch (err) {
+      console.error('Error al subir imagen de comprobante:', err);
+      toast({
+        title: 'Error de carga',
+        description: 'No se pudo subir la imagen del comprobante.',
+        variant: 'destructive'
+      });
+    } finally {
+      setSubiendoImagenDetalle(false);
+    }
+  };
 
   // Product flow date range states
   const [flujoFechaInicio, setFlujoFechaInicio] = useState(() => {
@@ -327,6 +445,22 @@ function ContabilidadPage() {
       // Load AI history
       await cargarHistorialIA();
 
+      // Load Scheduled Expenses
+      const gp = await GastosProgramadosService.obtenerGastosProgramados();
+      setGastosProgramados(gp);
+
+      // Load Financial Goals
+      const mf = await MetasService.obtenerMetasFinancieras();
+      setMetasFinancieras(mf);
+
+      // Load Assigned Funds
+      const fa = await DistribucionService.obtenerFondosAsignadosTotales();
+      setFondosAsignados(fa);
+
+      // Load Distribution History
+      const hd = await DistribucionService.obtenerHistorial();
+      setHistorialDistribucion(hd);
+
     } catch (err) {
       console.error('Error al cargar datos contables:', err);
       toast({
@@ -470,7 +604,7 @@ function ContabilidadPage() {
       return;
     }
 
-    const monto = Math.round(Number(gastoMonto));
+    const monto = Math.round(parseChileanMoneyInput(gastoMonto));
     if (isNaN(monto) || monto <= 0) {
       toast({
         title: 'Monto inválido',
@@ -509,6 +643,217 @@ function ContabilidadPage() {
     }
   };
 
+  // Handle Programmed Expense Submit
+  const handleProgramarGastoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!progConcepto.trim() || !progMonto || !progFecha) {
+      toast({
+        title: 'Campos incompletos',
+        description: 'Por favor rellena todos los campos.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const monto = Math.round(parseChileanMoneyInput(progMonto));
+    if (isNaN(monto) || monto <= 0) {
+      toast({
+        title: 'Monto inválido',
+        description: 'El monto debe ser mayor a 0.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      setCargando(true);
+      await GastosProgramadosService.crearGastoProgramado(
+        progConcepto.trim(),
+        monto,
+        new Date(progFecha + 'T12:00:00')
+      );
+
+      toast({
+        title: 'Gasto programado',
+        description: `Se programó "${progConcepto}" por ${formatCLPCurrency(monto)}.`
+      });
+
+      setProgConcepto('');
+      setProgMonto('');
+      await cargarDatosContables();
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: 'Error de registro',
+        description: err.message || 'No se pudo programar el gasto.',
+        variant: 'destructive'
+      });
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  // Handle Savings Goal Submit
+  const handleMetaAhorroSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!metaAhorroNombre.trim() || !metaAhorroMonto) {
+      toast({
+        title: 'Campos incompletos',
+        description: 'Por favor rellena el nombre y el monto objetivo.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const monto = Math.round(parseChileanMoneyInput(metaAhorroMonto));
+    if (isNaN(monto) || monto <= 0) {
+      toast({
+        title: 'Monto inválido',
+        description: 'El monto debe ser mayor a 0.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      setCargando(true);
+      const limite = metaAhorroFecha ? new Date(metaAhorroFecha + 'T12:00:00') : null;
+      await MetasService.crearMetaFinanciera(metaAhorroNombre.trim(), monto, limite);
+
+      toast({
+        title: 'Meta de Ahorro creada',
+        description: `Se creó la meta "${metaAhorroNombre}" con objetivo de ${formatCLPCurrency(monto)}.`
+      });
+
+      setMetaAhorroNombre('');
+      setMetaAhorroMonto('');
+      setMetaAhorroFecha('');
+      await cargarDatosContables();
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: 'Error al crear meta',
+        description: err.message || 'No se pudo registrar la meta.',
+        variant: 'destructive'
+      });
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  // Handle Distribute Funds Submit
+  const handleDistribuirFondosSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!distribucionMonto || !distribucionDestinoId) {
+      toast({
+        title: 'Campos incompletos',
+        description: 'Por favor ingresa un monto y selecciona un destino.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const monto = Math.round(parseChileanMoneyInput(distribucionMonto));
+    if (isNaN(monto) || monto <= 0) {
+      toast({
+        title: 'Monto inválido',
+        description: 'El monto debe ser mayor a 0.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validar fondos reales disponibles usando los KPIs de contabilidad ya calculados
+    const saldoOrigenReal = distribucionOrigen === 'caja' ? contabilidadKPIs.caja : contabilidadKPIs.banco;
+    const asignadoOrigen = distribucionOrigen === 'caja' ? fondosAsignados.caja : fondosAsignados.banco;
+    const disponibleReal = saldoOrigenReal - asignadoOrigen;
+
+    if (monto > disponibleReal) {
+      toast({
+        title: 'Fondos insuficientes',
+        description: `El saldo disponible sin asignar en ${distribucionOrigen === 'caja' ? 'Caja' : 'Banco'} es ${formatCLPCurrency(disponibleReal)}.`,
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setEjecutandoDistribucion(true);
+    try {
+      await DistribucionService.distribuirFondos({
+        monto,
+        origen: distribucionOrigen,
+        destinoTipo: distribucionDestinoTipo,
+        destinoId: distribucionDestinoId,
+        destinoNombre: distribucionDestinoNombre,
+        descripcion: `Asignación virtual de ${formatCLPCurrency(monto)} desde ${distribucionOrigen === 'caja' ? 'Caja' : 'Banco'} a "${distribucionDestinoNombre}"`,
+        usuarioUid: user?.id || 'admin'
+      });
+
+      toast({
+        title: 'Fondos distribuidos',
+        description: `Se asignaron ${formatCLPCurrency(monto)} a "${distribucionDestinoNombre}" con éxito.`
+      });
+
+      setDistribucionOpen(false);
+      setDistribucionMonto('');
+      await cargarDatosContables();
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: 'Error de distribución',
+        description: err.message || 'No se pudo realizar la distribución virtual.',
+        variant: 'destructive'
+      });
+    } finally {
+      setEjecutandoDistribucion(false);
+    }
+  };
+
+  // Handle Pay Scheduled Expense
+  const handlePagarGastoProgramado = async (id: string, metodo: 'efectivo' | 'transferencia') => {
+    try {
+      setCargando(true);
+      await GastosProgramadosService.pagarGastoProgramado(id, metodo);
+      toast({
+        title: 'Gasto pagado',
+        description: 'Se registró el pago en la contabilidad y se cerró la deuda programada.',
+        variant: 'success'
+      });
+      await cargarDatosContables();
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: 'Error al pagar',
+        description: err.message || 'No se pudo procesar el pago del gasto.',
+        variant: 'destructive'
+      });
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  // Handle Delete Scheduled Expense
+  const handleEliminarGastoProgramado = async (id: string) => {
+    try {
+      setCargando(true);
+      await GastosProgramadosService.eliminarGastoProgramado(id);
+      toast({
+        title: 'Gasto eliminado',
+        description: 'Se eliminó el gasto programado.'
+      });
+      await cargarDatosContables();
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: 'Error al eliminar',
+        description: err.message || 'No se pudo eliminar el registro.',
+        variant: 'destructive'
+      });
+    } finally {
+      setCargando(false);
+    }
+  };
+
   // Handle capital contribution submit
   const handleCapitalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -518,15 +863,15 @@ function ContabilidadPage() {
     let montoBanco = 0;
     
     if (capitalDestino !== 'mixto') {
-      totalMonto = Math.round(Number(capitalMonto));
+      totalMonto = Math.round(parseChileanMoneyInput(capitalMonto));
       if (capitalDestino === 'caja') {
         montoCaja = totalMonto;
       } else {
         montoBanco = totalMonto;
       }
     } else {
-      montoCaja = Math.round(Number(capitalMontoCaja));
-      montoBanco = Math.round(Number(capitalMontoBanco));
+      montoCaja = Math.round(parseChileanMoneyInput(capitalMontoCaja));
+      montoBanco = Math.round(parseChileanMoneyInput(capitalMontoBanco));
       totalMonto = montoCaja + montoBanco;
     }
     
@@ -645,7 +990,8 @@ function ContabilidadPage() {
       producto_id: selProdId,
       nombre: product.nombre,
       cantidad: qty,
-      costo_unitario: cost
+      costo_unitario: cost,
+      cantidad_por_caja: product.cantidad_por_caja || undefined
     };
 
     setFacturaProductos(prev => [...prev, newItem]);
@@ -871,38 +1217,90 @@ function ContabilidadPage() {
         </div>
 
         {/* Tab content block */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          {/* Scrollable tabs on mobile, grid on desktop */}
-          <div className="overflow-x-auto -mx-1 px-1 pb-1 mb-6">
-            <TabsList className="flex w-max lg:w-full lg:grid lg:grid-cols-7 gap-1.5 bg-muted/30 p-1.5 rounded-2xl border border-border/10 min-w-full">
-              <TabsTrigger value="resumen" className="rounded-xl text-xs font-bold py-2.5 whitespace-nowrap px-3 flex-shrink-0">
-                Balance &amp; Resultados
-              </TabsTrigger>
-              <TabsTrigger value="diario" className="rounded-xl text-xs font-bold py-2.5 whitespace-nowrap px-3 flex-shrink-0">
-                Libro Diario
-              </TabsTrigger>
-              <TabsTrigger value="mayor" className="rounded-xl text-xs font-bold py-2.5 whitespace-nowrap px-3 flex-shrink-0">
-                Libro Mayor
-              </TabsTrigger>
-              <TabsTrigger value="facturas" className="rounded-xl text-xs font-bold py-2.5 whitespace-nowrap px-3 flex-shrink-0 flex items-center justify-center gap-1">
-                Compras Factura
-                {facturas.length > 0 && <Badge variant="secondary" className="px-1.5 py-0 text-[9px]">{facturas.length}</Badge>}
-              </TabsTrigger>
-              <TabsTrigger value="flujo" className="rounded-xl text-xs font-bold py-2.5 whitespace-nowrap px-3 flex-shrink-0">
-                Flujo de Productos
-              </TabsTrigger>
-              <TabsTrigger value="gastos" className="rounded-xl text-xs font-bold py-2.5 whitespace-nowrap px-3 flex-shrink-0">
-                Registrar Egresos
-              </TabsTrigger>
-              <TabsTrigger value="ai-assistant" className="rounded-xl text-xs font-bold py-2.5 whitespace-nowrap px-3 flex-shrink-0 flex items-center justify-center gap-1 bg-indigo-500/5 hover:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/10 data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
-                <Sparkles className="h-3.5 w-3.5" />
-                Asistente IA
-              </TabsTrigger>
-            </TabsList>
+        <div className="w-full h-full">
+          {/* Scrollable tabs on mobile, flex on desktop */}
+          <div className="w-full overflow-x-auto overflow-y-hidden no-scrollbar border-b border-border/50 mb-6 flex gap-6">
+            <button
+              onClick={() => setActiveTab('resumen')}
+              className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 whitespace-nowrap ${
+                activeTab === 'resumen'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Balance &amp; Resultados
+            </button>
+            <button
+              onClick={() => setActiveTab('diario')}
+              className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 whitespace-nowrap ${
+                activeTab === 'diario'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Libro Diario
+            </button>
+            <button
+              onClick={() => setActiveTab('mayor')}
+              className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 whitespace-nowrap ${
+                activeTab === 'mayor'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Libro Mayor
+            </button>
+            <button
+              onClick={() => setActiveTab('facturas')}
+              className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 whitespace-nowrap flex items-center justify-center gap-1.5 ${
+                activeTab === 'facturas'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Compras
+              {facturas.length > 0 && (
+                <Badge variant="secondary" className="px-1.5 py-0.5 text-[10px] font-bold bg-muted/60 text-muted-foreground">
+                  {facturas.length}
+                </Badge>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('flujo')}
+              className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 whitespace-nowrap ${
+                activeTab === 'flujo'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Flujo de Productos
+            </button>
+            <button
+              onClick={() => setActiveTab('gastos')}
+              className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 whitespace-nowrap ${
+                activeTab === 'gastos'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Registrar Egresos
+            </button>
+            <button
+              onClick={() => setActiveTab('ai-assistant')}
+              className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 whitespace-nowrap flex items-center justify-center gap-1.5 ${
+                activeTab === 'ai-assistant'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
+              Asistente IA
+            </button>
           </div>
 
           {/* TAB 1: BALANCE & RESULTADOS */}
-          <TabsContent value="resumen" className="mt-0 outline-none space-y-6">
+          {activeTab === 'resumen' && (
+            <div className="mt-0 outline-none space-y-6">
             {contabilidadKPIs.capitalInicial === 0 && contabilidadKPIs.utilidadesAcumuladas === 0 && (
               <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-[1.5rem] flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="space-y-1 text-center sm:text-left">
@@ -1042,11 +1440,13 @@ function ContabilidadPage() {
               </Card>
 
             </div>
-          </TabsContent>
+            </div>
+          )}
 
           {/* TAB 2: LIBRO DIARIO */}
-          <TabsContent value="diario" className="mt-0 outline-none">
-            <Card className="border border-border/50">
+          {activeTab === 'diario' && (
+            <div className="mt-0 outline-none">
+              <Card className="border border-border/50">
               <CardHeader className="py-4">
                 <CardTitle className="text-base font-extrabold uppercase tracking-wider">Libro Diario (General Journal)</CardTitle>
                 <p className="text-xs text-muted-foreground">Listado cronológico de asientos y movimientos contables.</p>
@@ -1171,11 +1571,13 @@ function ContabilidadPage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+            </div>
+          )}
 
           {/* TAB 3: LIBRO MAYOR */}
-          <TabsContent value="mayor" className="mt-0 outline-none space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {activeTab === 'mayor' && (
+            <div className="mt-0 outline-none space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <Label htmlFor="sel_cuenta_mayor" className="text-xs font-black uppercase tracking-wider text-muted-foreground shrink-0">
                   Seleccionar Cuenta:
@@ -1265,11 +1667,13 @@ function ContabilidadPage() {
                 Selecciona una cuenta del menú superior para ver su Libro Mayor.
               </div>
             )}
-          </TabsContent>
+            </div>
+          )}
 
           {/* TAB 4: COMPRAS CON FACTURA */}
-          <TabsContent value="facturas" className="mt-0 outline-none space-y-4">
-            <div className="flex justify-between items-center">
+          {activeTab === 'facturas' && (
+            <div className="mt-0 outline-none space-y-4">
+              <div className="flex justify-between items-center">
               <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground">Registro de Facturas Recibidas</h3>
               
               {/* Dialog modal for purchase invoice registration */}
@@ -1539,151 +1943,681 @@ function ContabilidadPage() {
               </Dialog>
             </div>
 
-            <Card className="border border-border/50">
-              <CardContent className="p-0">
-                <div className="overflow-x-auto w-full">
-                  <Table className="min-w-[800px]">
-                  <TableHeader>
-                    <TableRow className="bg-muted/10">
-                      <TableHead className="w-[10%] pl-6">Tipo / N° Folio</TableHead>
-                      <TableHead className="w-[12%]">Fecha</TableHead>
-                      <TableHead className="w-[28%]">Proveedor (RUT)</TableHead>
-                      <TableHead className="w-[12%]">Pago</TableHead>
-                      <TableHead className="w-[10%] text-right">Neto</TableHead>
-                      <TableHead className="w-[8%] text-right">IVA</TableHead>
-                      <TableHead className="w-[10%] text-right">Total</TableHead>
-                      <TableHead className="w-[10%] text-right pr-6">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {facturas.map((f) => (
-                      <TableRow key={f.id} className="hover:bg-muted/5 transition-colors text-xs">
-                        <TableCell className="font-mono font-bold text-primary pl-6">
-                          <span className="block text-[9px] uppercase tracking-wider opacity-60 font-sans">{f.tipo_documento || 'factura'}</span>
-                          {f.numero_documento || f.numero_factura}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {format(f.fecha.toDate(), 'dd/MM/yyyy')}
-                        </TableCell>
-                        <TableCell className="font-bold">
-                          {f.proveedor_nombre}
-                          <span className="block text-[10px] text-muted-foreground font-normal mt-0.5">
-                            RUT: {f.proveedor_rut}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className="font-bold text-[9px] uppercase tracking-wider" variant="secondary">
-                            {f.metodo_pago}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCLPCurrency(f.neto)}
-                        </TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {formatCLPCurrency(f.iva)}
-                        </TableCell>
-                        <TableCell className="text-right font-black text-foreground">
-                          {formatCLPCurrency(f.total)}
-                        </TableCell>
-                        <TableCell className="text-right pr-6">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedFactura(f);
-                              setFacturaDetalleOpen(true);
-                            }}
-                            className="h-8 rounded-lg text-xs font-bold text-primary flex items-center gap-1 ml-auto"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                            Detalle
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+            {facturasAgrupadasPorDia.length === 0 ? (
+              <Card className="border border-dashed border-2 py-12 flex flex-col items-center justify-center text-center">
+                <ShoppingCart className="h-12 w-12 text-muted-foreground/40 mb-3" />
+                <CardTitle className="text-base text-muted-foreground">No hay compras registradas</CardTitle>
+                <p className="text-xs text-muted-foreground/70 max-w-sm mt-1">
+                  Registra una factura o boleta de compra para comenzar.
+                </p>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {facturasAgrupadasPorDia.map((dia) => {
+                  const isExpanded = !!expandedDays[dia.fechaKey];
+                  
+                  // Flatten products bought on this day with metadata
+                  const itemsComprados = dia.facturas.flatMap(f => {
+                    const isFacturado = f.tipo_documento === 'factura';
+                    return (f.productos || []).map(p => ({
+                      ...p,
+                      factura: f,
+                      isFacturado
+                    }));
+                  });
 
-                    {facturas.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
-                          No hay facturas de compra registradas en el sistema.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                  return (
+                    <Card key={dia.fechaKey} className="border border-border/50 overflow-hidden">
+                      {/* Accordion Trigger Header */}
+                      <div 
+                        onClick={() => {
+                          setExpandedDays(prev => ({
+                            ...prev,
+                            [dia.fechaKey]: !prev[dia.fechaKey]
+                          }));
+                        }}
+                        className="flex items-center justify-between p-4 bg-muted/10 hover:bg-muted/20 cursor-pointer select-none transition-colors border-b border-border/10"
+                      >
+                        <div className="flex flex-col">
+                          <span className="text-xs font-black text-muted-foreground uppercase tracking-wider">
+                            {format(dia.fechaDisplay, "EEEE d 'de' MMMM 'de' yyyy", { locale: es })}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground font-semibold mt-0.5">
+                            {dia.facturas.length} {dia.facturas.length === 1 ? 'comprobante' : 'comprobantes'} • {itemsComprados.length} {itemsComprados.length === 1 ? 'producto comprado' : 'productos comprados'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <span className="text-[9px] font-black uppercase text-muted-foreground tracking-wider block">Total Comprado</span>
+                            <span className="text-sm font-black text-primary block mt-0.5">
+                              {formatCLPCurrency(dia.total)}
+                            </span>
+                          </div>
+                          <div className="p-1 rounded-lg bg-muted/60 text-muted-foreground">
+                            {isExpanded ? (
+                              <ChevronUp className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Accordion Content */}
+                      {isExpanded && (
+                        <div className="overflow-x-auto w-full">
+                          <Table className="min-w-[950px]">
+                            <TableHeader>
+                              <TableRow className="bg-muted/5 text-[10px]">
+                                <TableHead className="pl-6 py-2">Producto</TableHead>
+                                <TableHead className="py-2">Documento / Folio</TableHead>
+                                <TableHead className="py-2">Proveedor</TableHead>
+                                <TableHead className="text-center py-2">Cant.</TableHead>
+                                <TableHead className="text-right py-2">Costo Unit.</TableHead>
+                                <TableHead className="text-right py-2">Total</TableHead>
+                                <TableHead className="text-center py-2">Estado</TableHead>
+                                <TableHead className="text-right pr-6 py-2">Acciones</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody className="text-xs">
+                              {itemsComprados.map((item, index) => (
+                                <TableRow key={`${item.factura.id}-${index}`} className="hover:bg-muted/5 transition-colors border-b last:border-0 border-border/30">
+                                  <TableCell className="font-bold pl-6 py-3">
+                                    {item.nombre}
+                                  </TableCell>
+                                  <TableCell className="py-3 font-semibold">
+                                    <span className="block text-[9px] uppercase tracking-wider opacity-60 font-sans">{item.factura.tipo_documento || 'factura'}</span>
+                                    N° {item.factura.numero_documento || item.factura.numero_factura}
+                                  </TableCell>
+                                  <TableCell className="py-3">
+                                    <span className="font-bold block">{item.factura.proveedor_nombre}</span>
+                                    <span className="text-[10px] text-muted-foreground font-mono">RUT: {item.factura.proveedor_rut}</span>
+                                  </TableCell>
+                                  <TableCell className="text-center font-bold py-3">
+                                    {item.cantidad}
+                                  </TableCell>
+                                  <TableCell className="text-right font-medium font-mono py-3">
+                                    {formatCLPCurrency(item.costo_unitario)}
+                                  </TableCell>
+                                  <TableCell className="text-right font-black font-mono py-3">
+                                    {formatCLPCurrency(item.cantidad * item.costo_unitario)}
+                                  </TableCell>
+                                  <TableCell className="text-center py-3">
+                                    {item.isFacturado ? (
+                                      <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 font-bold text-[9px] uppercase tracking-wider">
+                                        Facturado
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-red-500/10 text-red-500 border-red-500/20 font-bold text-[9px] uppercase tracking-wider animate-pulse">
+                                        No Facturado
+                                      </Badge>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-right pr-6 py-3">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedFactura(item.factura);
+                                        setFacturaDetalleOpen(true);
+                                      }}
+                                      className="h-8 rounded-lg text-xs font-bold text-primary flex items-center gap-1 ml-auto"
+                                    >
+                                      <Eye className="h-3.5 w-3.5" />
+                                      Doc. Origen
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+            </div>
+          )}
 
           {/* TAB 5: REGISTRAR GASTOS / EGRESOS */}
-          <TabsContent value="gastos" className="mt-0 outline-none">
-            <Card className="border border-border/50 max-w-xl mx-auto">
-              <CardHeader>
-                <CardTitle className="text-base font-extrabold uppercase tracking-wider flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 text-red-500" />
-                  Registrar Egreso / Gasto Operativo
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Registra mermas, arriendos, boletas de luz, pago de sueldos o insumos del local.
-                </p>
-              </CardHeader>
-              <CardContent className="pb-6">
-                <form onSubmit={handleGastoSubmit} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="gasto_glosa" className="text-xs font-black uppercase text-muted-foreground tracking-wider">Concepto o Glosa del Gasto</Label>
-                    <Input
-                      id="gasto_glosa"
-                      placeholder="Ej: Pago de luz eléctrica de Mayo"
-                      value={gastoGlosa}
-                      onChange={(e) => setGastoGlosa(e.target.value)}
-                      className="h-10 text-[16px] md:text-xs font-semibold rounded-xl"
-                      required
-                    />
+          {activeTab === 'gastos' && (
+            <div className="mt-0 outline-none space-y-6">
+            
+            {/* Resumen de Fondos y Distribución */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="border border-border/50 bg-card p-5 space-y-2">
+                <h4 className="text-[10px] font-black text-muted-foreground uppercase tracking-widest leading-none">Fondos en Caja (Efectivo)</h4>
+                <div className="text-2xl font-black text-foreground">{formatCLPCurrency(contabilidadKPIs.caja)}</div>
+                <div className="flex justify-between text-[10px] text-muted-foreground border-t border-border/40 pt-2">
+                  <span>Asignado: {formatCLPCurrency(fondosAsignados.caja)}</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">Disponible: {formatCLPCurrency(Math.max(0, contabilidadKPIs.caja - fondosAsignados.caja))}</span>
+                </div>
+              </Card>
+
+              <Card className="border border-border/50 bg-card p-5 space-y-2">
+                <h4 className="text-[10px] font-black text-muted-foreground uppercase tracking-widest leading-none">Fondos en Banco (Digital)</h4>
+                <div className="text-2xl font-black text-foreground">{formatCLPCurrency(contabilidadKPIs.banco)}</div>
+                <div className="flex justify-between text-[10px] text-muted-foreground border-t border-border/40 pt-2">
+                  <span>Asignado: {formatCLPCurrency(fondosAsignados.banco)}</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">Disponible: {formatCLPCurrency(Math.max(0, contabilidadKPIs.banco - fondosAsignados.banco))}</span>
+                </div>
+              </Card>
+
+              <Card className="border border-border/50 bg-card p-5 flex flex-col justify-between">
+                <div>
+                  <h4 className="text-[10px] font-black text-muted-foreground uppercase tracking-widest leading-none">Presupuesto Asignado</h4>
+                  <div className="text-2xl font-black text-primary mt-2">
+                    {formatCLPCurrency(fondosAsignados.caja + fondosAsignados.banco)}
+                  </div>
+                </div>
+                <Button
+                  onClick={() => {
+                    setDistribucionOrigen('caja');
+                    setDistribucionDestinoTipo('gasto');
+                    setDistribucionDestinoId('');
+                    setDistribucionDestinoNombre('');
+                    setDistribucionMonto('');
+                    setDistribucionOpen(true);
+                  }}
+                  className="w-full rounded-xl text-xs font-bold h-9 mt-4 flex items-center justify-center gap-1.5"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Distribuir Fondos
+                </Button>
+              </Card>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* Columna Izquierda: Formularios y Metas de Ahorro */}
+              <div className="lg:col-span-4 space-y-6">
+                
+                {/* Formulario de Gastos */}
+                <Card className="border border-border/50">
+                  <CardHeader className="pb-3">
+                    <div className="flex gap-2 bg-muted/50 p-1 rounded-xl w-full">
+                      <button
+                        onClick={() => setTipoGastoRegistro('directo')}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${tipoGastoRegistro === 'directo' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                      >
+                        Gasto Directo
+                      </button>
+                      <button
+                        onClick={() => setTipoGastoRegistro('programado')}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${tipoGastoRegistro === 'programado' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                      >
+                        Programar Gasto
+                      </button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pb-5">
+                    {tipoGastoRegistro === 'directo' ? (
+                      <form onSubmit={handleGastoSubmit} className="space-y-4">
+                        <div className="space-y-1">
+                          <Label htmlFor="gasto_glosa" className="text-[10px] font-black uppercase text-muted-foreground">Concepto / Glosa</Label>
+                          <Input
+                            id="gasto_glosa"
+                            placeholder="Ej: Pago de luz eléctrica"
+                            value={gastoGlosa}
+                            onChange={(e) => setGastoGlosa(e.target.value)}
+                            className="h-9 text-xs rounded-xl"
+                            required
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label htmlFor="gasto_monto" className="text-[10px] font-black uppercase text-muted-foreground">Monto ($)</Label>
+                            <Input
+                              id="gasto_monto"
+                              inputMode="numeric"
+                              placeholder="Ej: $35.000"
+                              value={gastoMonto}
+                              onChange={(e) => setGastoMonto(e.target.value.replace(/[^\d.]/g, ''))}
+                              onBlur={() => { const v = parseChileanMoneyInput(gastoMonto); setGastoMonto(v > 0 ? formatCLPCurrency(v) : ''); }}
+                              className="h-9 text-xs rounded-xl"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="gasto_metodo" className="text-[10px] font-black uppercase text-muted-foreground">Medio de Pago</Label>
+                            <select
+                              id="gasto_metodo"
+                              value={gastoMetodo}
+                              onChange={(e) => setGastoMetodo(e.target.value as any)}
+                              className="w-full bg-card border border-border text-foreground px-3 py-2 rounded-xl text-xs font-bold h-9 focus:outline-none focus:ring-1 focus:ring-primary"
+                            >
+                              <option value="efectivo">Caja (Efectivo)</option>
+                              <option value="transferencia">Banco (Transf.)</option>
+                            </select>
+                          </div>
+                        </div>
+                        <Button type="submit" className="w-full h-9 rounded-xl text-xs font-bold mt-2">
+                          Registrar Gasto Real
+                        </Button>
+                      </form>
+                    ) : (
+                      <form onSubmit={handleProgramarGastoSubmit} className="space-y-4">
+                        <div className="space-y-1">
+                          <Label htmlFor="prog_concepto" className="text-[10px] font-black uppercase text-muted-foreground">Concepto a Programar</Label>
+                          <Input
+                            id="prog_concepto"
+                            placeholder="Ej: Arriendo del local comercial"
+                            value={progConcepto}
+                            onChange={(e) => setProgConcepto(e.target.value)}
+                            className="h-9 text-xs rounded-xl"
+                            required
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label htmlFor="prog_monto" className="text-[10px] font-black uppercase text-muted-foreground">Monto estimado ($)</Label>
+                            <Input
+                              id="prog_monto"
+                              inputMode="numeric"
+                              placeholder="Ej: $250.000"
+                              value={progMonto}
+                              onChange={(e) => setProgMonto(e.target.value.replace(/[^\d.]/g, ''))}
+                              onBlur={() => { const v = parseChileanMoneyInput(progMonto); setProgMonto(v > 0 ? formatCLPCurrency(v) : ''); }}
+                              className="h-9 text-xs rounded-xl"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="prog_fecha" className="text-[10px] font-black uppercase text-muted-foreground">Fecha Vencimiento</Label>
+                            <Input
+                              id="prog_fecha"
+                              type="date"
+                              value={progFecha}
+                              onChange={(e) => setProgFecha(e.target.value)}
+                              className="h-9 text-xs rounded-xl"
+                              required
+                            />
+                          </div>
+                        </div>
+                        <Button type="submit" variant="secondary" className="w-full h-9 rounded-xl text-xs font-bold mt-2">
+                          Programar Gasto
+                        </Button>
+                      </form>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Metas Financieras (Ahorro) */}
+                <Card className="border border-border/50">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                      <Target className="h-4 w-4 text-indigo-500" />
+                      Metas de Ahorro / Reinversión
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Lista de Metas */}
+                    <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                      {metasFinancieras.map((meta) => {
+                        const pct = calcPct(meta.monto_asignado, meta.monto_objetivo);
+                        return (
+                          <div key={meta.id} className="text-xs border border-border/40 p-3 rounded-xl space-y-1.5 bg-muted/5">
+                            <div className="flex justify-between font-bold">
+                              <span className="truncate pr-2">{meta.nombre}</span>
+                              <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                {formatCLPCurrency(meta.monto_asignado)} / {formatCLPCurrency(meta.monto_objetivo)}
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-[9px] text-muted-foreground leading-none">
+                              <span>Progreso: {pct}%</span>
+                              {meta.completada && (
+                                <Badge className="h-3 text-[7px] bg-emerald-500 text-white font-bold leading-none py-0 px-1 rounded-sm">COMPLETADA</Badge>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {metasFinancieras.length === 0 && (
+                        <p className="text-center text-[11px] text-muted-foreground py-4">No hay metas de ahorro registradas.</p>
+                      )}
+                    </div>
+
+                    {/* Formulario Nueva Meta */}
+                    <form onSubmit={handleMetaAhorroSubmit} className="border-t border-border/40 pt-4 space-y-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="meta_nombre" className="text-[10px] font-black uppercase text-muted-foreground">Nueva Meta de Ahorro</Label>
+                        <Input
+                          id="meta_nombre"
+                          placeholder="Ej: Vitrina nueva o Camión de reparto"
+                          value={metaAhorroNombre}
+                          onChange={(e) => setMetaAhorroNombre(e.target.value)}
+                          className="h-8 text-xs rounded-xl"
+                          required
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Input
+                            inputMode="numeric"
+                            placeholder="Ej: $500.000"
+                            value={metaAhorroMonto}
+                            onChange={(e) => setMetaAhorroMonto(e.target.value.replace(/[^\d.]/g, ''))}
+                            onBlur={() => { const v = parseChileanMoneyInput(metaAhorroMonto); setMetaAhorroMonto(v > 0 ? formatCLPCurrency(v) : ''); }}
+                            className="h-8 text-xs rounded-xl"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <Input
+                            type="date"
+                            placeholder="Fecha límite"
+                            value={metaAhorroFecha}
+                            onChange={(e) => setMetaAhorroFecha(e.target.value)}
+                            className="h-8 text-xs rounded-xl"
+                          />
+                        </div>
+                      </div>
+                      <Button type="submit" variant="outline" className="w-full h-8 text-[11px] font-bold rounded-xl">
+                        <Plus className="h-3 w-3 mr-1" />
+                        Crear Meta de Ahorro
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Columna Derecha: Listado de Gastos Programados */}
+              <div className="lg:col-span-8">
+                <Card className="border border-border/50">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-xs font-black uppercase tracking-wider flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Calendar className="h-4 w-4 text-primary" />
+                        Gastos Mensuales Estipulados (Vencimientos)
+                      </span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto w-full">
+                      <Table className="min-w-[650px]">
+                        <TableHeader>
+                          <TableRow className="bg-muted/10">
+                            <TableHead className="pl-6 text-[10px] font-bold uppercase">Concepto</TableHead>
+                            <TableHead className="text-[10px] font-bold uppercase text-right">Monto Estimado</TableHead>
+                            <TableHead className="text-[10px] font-bold uppercase text-center">Vencimiento</TableHead>
+                            <TableHead className="text-[10px] font-bold uppercase text-center">Estado / Asignación</TableHead>
+                            <TableHead className="text-[10px] font-bold uppercase text-right pr-6">Acciones</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {gastosProgramados.map((gasto) => {
+                            const dateObj = gasto.fecha_vencimiento.toDate();
+                            const formattedDate = dateObj.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' });
+                            
+                            // Calcular días restantes
+                            const ahoraMillis = new Date().setHours(0, 0, 0, 0);
+                            const vencMillis = dateObj.setHours(0, 0, 0, 0);
+                            const diffDays = Math.ceil((vencMillis - ahoraMillis) / (1000 * 60 * 60 * 24));
+                            
+                            // Progreso de asignación
+                            const pct = calcPct(gasto.monto_asignado, gasto.monto);
+
+                            return (
+                              <TableRow key={gasto.id} className="hover:bg-muted/5 transition-colors text-xs">
+                                <TableCell className="font-bold pl-6">{gasto.concepto}</TableCell>
+                                <TableCell className="text-right font-semibold">{formatCLPCurrency(gasto.monto)}</TableCell>
+                                <TableCell className="text-center font-medium">
+                                  <div>{formattedDate}</div>
+                                  {!gasto.pagado && (
+                                    <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${diffDays < 0 ? 'text-red-500 bg-red-500/10 animate-pulse' : diffDays <= 3 ? 'text-amber-500 bg-amber-500/10' : 'text-emerald-500 bg-emerald-500/10'}`}>
+                                      {diffDays < 0 ? `Atrasado x ${Math.abs(diffDays)}d` : diffDays === 0 ? 'Vence hoy' : `Faltan ${diffDays}d`}
+                                    </span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="align-middle">
+                                  {gasto.pagado ? (
+                                    <div className="flex flex-col items-center">
+                                      <Badge className="bg-emerald-500 text-white text-[8px] font-black uppercase py-0.5">PAGADO</Badge>
+                                      <span className="text-[8px] text-muted-foreground mt-0.5 capitalize">con {gasto.metodo_pago}</span>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-1 w-28 mx-auto">
+                                      <div className="flex justify-between text-[9px] font-medium leading-none">
+                                        <span>Asignado: {pct}%</span>
+                                        <span>{formatCLPCurrency(gasto.monto_asignado)}</span>
+                                      </div>
+                                      <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                                        <div 
+                                          className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-primary'}`}
+                                          style={{ width: `${pct}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right pr-6">
+                                  {!gasto.pagado ? (
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      {/* Botón Distribuir directo */}
+                                      <Button
+                                        onClick={() => {
+                                          setDistribucionDestinoTipo('gasto');
+                                          setDistribucionDestinoId(gasto.id);
+                                          setDistribucionDestinoNombre(gasto.concepto);
+                                          setDistribucionOrigen('caja');
+                                          setDistribucionMonto(formatCLPCurrency(gasto.monto - gasto.monto_asignado));
+                                          setDistribucionOpen(true);
+                                        }}
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 text-[10px] font-bold rounded-lg px-2"
+                                      >
+                                        Asignar
+                                      </Button>
+                                      
+                                      {/* Pagar */}
+                                      <Dialog>
+                                        <DialogTrigger asChild>
+                                          <Button
+                                            size="sm"
+                                            className="h-7 text-[10px] font-bold rounded-lg px-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                          >
+                                            Pagar
+                                          </Button>
+                                        </DialogTrigger>
+                                        <DialogContent className="sm:max-w-xs">
+                                          <DialogHeader>
+                                            <DialogTitle className="text-sm font-bold uppercase">Confirmar Pago de Gasto</DialogTitle>
+                                            <DialogDescription className="text-xs">
+                                              ¿Cómo deseas registrar el pago contable para "{gasto.concepto}"?
+                                            </DialogDescription>
+                                          </DialogHeader>
+                                          <div className="grid grid-cols-2 gap-3 pt-2">
+                                            <Button
+                                              onClick={() => handlePagarGastoProgramado(gasto.id, 'efectivo')}
+                                              className="h-10 text-xs rounded-xl flex items-center justify-center gap-1 bg-amber-500/10 text-amber-600 hover:bg-amber-500 hover:text-white border border-amber-500/20"
+                                            >
+                                              <DollarSign className="h-4 w-4" />
+                                              Caja (Efectivo)
+                                            </Button>
+                                            <Button
+                                              onClick={() => handlePagarGastoProgramado(gasto.id, 'transferencia')}
+                                              className="h-10 text-xs rounded-xl flex items-center justify-center gap-1 bg-blue-500/10 text-blue-600 hover:bg-blue-500 hover:text-white border border-blue-500/20"
+                                            >
+                                              <Send className="h-4 w-4" />
+                                              Banco (Transf.)
+                                            </Button>
+                                          </div>
+                                        </DialogContent>
+                                      </Dialog>
+
+                                      <Button
+                                        onClick={() => handleEliminarGastoProgramado(gasto.id)}
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-destructive hover:bg-destructive/10 rounded-lg"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-[10px] text-muted-foreground italic font-medium pr-2">Listo</span>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                          {gastosProgramados.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={5} className="text-center py-12 text-muted-foreground text-xs font-semibold">
+                                No hay gastos programados o mensuales registrados.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+            </div>
+
+            {/* Modal de Distribución de Fondos */}
+            <Dialog open={distribucionOpen} onOpenChange={setDistribucionOpen}>
+              <DialogContent className="sm:max-w-md rounded-2xl">
+                <DialogHeader>
+                  <DialogTitle className="text-lg font-black">Distribuir Fondos (Virtual)</DialogTitle>
+                  <DialogDescription className="text-xs">
+                    Asigna fondos de forma virtual desde Caja o Banco a un gasto programado o meta de ahorro para asegurar su cumplimiento.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleDistribuirFondosSubmit} className="space-y-4 py-2 text-xs">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-black uppercase text-muted-foreground">Origen del Dinero</Label>
+                    <select
+                      value={distribucionOrigen}
+                      onChange={(e) => setDistribucionOrigen(e.target.value as any)}
+                      className="w-full bg-card border border-border text-foreground px-4 py-2 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary h-10"
+                    >
+                      <option value="caja">Caja (Disponible sin asignar: {formatCLPCurrency(Math.max(0, contabilidadKPIs.caja - fondosAsignados.caja))})</option>
+                      <option value="banco">Banco (Disponible sin asignar: {formatCLPCurrency(Math.max(0, contabilidadKPIs.banco - fondosAsignados.banco))})</option>
+                    </select>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="gasto_monto" className="text-xs font-black uppercase text-muted-foreground tracking-wider">Monto Total ($)</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] font-black uppercase text-muted-foreground">Tipo de Destino</Label>
+                      <div className="flex gap-1.5 bg-muted/50 p-1 rounded-xl h-10 items-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDistribucionDestinoTipo('gasto');
+                            setDistribucionDestinoId('');
+                            setDistribucionDestinoNombre('');
+                          }}
+                          className={`flex-1 py-1 text-[10px] font-bold rounded-lg transition-all h-8 ${distribucionDestinoTipo === 'gasto' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}
+                        >
+                          Gastos
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDistribucionDestinoTipo('meta_financiera');
+                            setDistribucionDestinoId('');
+                            setDistribucionDestinoNombre('');
+                          }}
+                          className={`flex-1 py-1 text-[10px] font-bold rounded-lg transition-all h-8 ${distribucionDestinoTipo === 'meta_financiera' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}
+                        >
+                          Ahorros
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="dist_monto" className="text-[10px] font-black uppercase text-muted-foreground">Monto a Asignar</Label>
                       <Input
-                        id="gasto_monto"
-                        type="number"
-                        placeholder="Ej: 35000"
-                        value={gastoMonto}
-                        onChange={(e) => setGastoMonto(e.target.value)}
-                        className="h-10 text-[16px] md:text-xs font-semibold rounded-xl"
+                        id="dist_monto"
+                        inputMode="numeric"
+                        placeholder="Ej: $50.000"
+                        value={distribucionMonto}
+                        onChange={(e) => setDistribucionMonto(e.target.value.replace(/[^\d.]/g, ''))}
+                        onBlur={() => { const v = parseChileanMoneyInput(distribucionMonto); setDistribucionMonto(v > 0 ? formatCLPCurrency(v) : ''); }}
+                        className="h-10 text-xs rounded-xl"
                         required
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="gasto_metodo" className="text-xs font-black uppercase text-muted-foreground tracking-wider">Medio de Pago</Label>
-                      <select
-                        id="gasto_metodo"
-                        value={gastoMetodo}
-                        onChange={(e) => setGastoMetodo(e.target.value as any)}
-                        className="w-full bg-card border border-border text-foreground px-4 py-2 rounded-xl text-[16px] md:text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary h-10"
-                      >
-                        <option value="efectivo">Efectivo (Caja)</option>
-                        <option value="transferencia">Transferencia (Banco)</option>
-                      </select>
-                    </div>
                   </div>
 
-                  <Button
-                    type="submit"
-                    className="w-full h-11 bg-primary text-white font-bold rounded-xl mt-2 flex items-center justify-center gap-1 hover:bg-primary/95 transition-all duration-300"
-                  >
-                    <PlusCircle className="h-4 w-4" />
-                    Registrar Gasto y Generar Asiento
-                  </Button>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-black uppercase text-muted-foreground">Seleccionar Destino</Label>
+                    <select
+                      value={distribucionDestinoId}
+                      onChange={(e) => {
+                        const targetId = e.target.value;
+                        setDistribucionDestinoId(targetId);
+                        
+                        if (distribucionDestinoTipo === 'gasto') {
+                          const item = gastosProgramados.find(g => g.id === targetId);
+                          if (item) setDistribucionDestinoNombre(item.concepto);
+                        } else {
+                          const item = metasFinancieras.find(m => m.id === targetId);
+                          if (item) setDistribucionDestinoNombre(item.nombre);
+                        }
+                      }}
+                      className="w-full bg-card border border-border text-foreground px-4 py-2 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary h-10"
+                      required
+                    >
+                      <option value="">Selecciona una opción...</option>
+                      {distribucionDestinoTipo === 'gasto' ? (
+                        gastosProgramados.filter(g => !g.pagado).map(g => (
+                          <option key={g.id} value={g.id}>
+                            {g.concepto} (Falta: {formatCLPCurrency(g.monto - g.monto_asignado)})
+                          </option>
+                        ))
+                      ) : (
+                        metasFinancieras.filter(m => !m.completada).map(m => (
+                          <option key={m.id} value={m.id}>
+                            {m.nombre} (Falta: {formatCLPCurrency(m.monto_objetivo - m.monto_asignado)})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+
+                  <DialogFooter className="pt-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setDistribucionOpen(false)}
+                      disabled={ejecutandoDistribucion}
+                      className="rounded-xl h-10 text-xs font-bold"
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={ejecutandoDistribucion}
+                      className="rounded-xl h-10 text-xs font-bold"
+                    >
+                      {ejecutandoDistribucion ? 'Asignando...' : 'Confirmar Asignación'}
+                    </Button>
+                  </DialogFooter>
                 </form>
-              </CardContent>
-            </Card>
-          </TabsContent>
+              </DialogContent>
+            </Dialog>
+
+            </div>
+          )}
 
           {/* TAB 5: FLUJO DE PRODUCTOS */}
-          <TabsContent value="flujo" className="mt-0 outline-none space-y-4">
-            <Card className="border border-border/50">
+          {activeTab === 'flujo' && (
+            <div className="mt-0 outline-none space-y-4">
+              <Card className="border border-border/50">
               <CardHeader className="pb-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
@@ -1739,16 +2673,16 @@ function ContabilidadPage() {
                           <TableRow key={prod.id} className="hover:bg-muted/5 transition-colors text-xs">
                             <TableCell className="font-bold pl-6">{prod.nombre}</TableCell>
                             <TableCell className="text-right text-emerald-500 font-semibold">
-                              +{flow.entradas.toFixed(2)} {prod.unidad}
+                              +{prod.unidad === 'kg' ? flow.entradas.toFixed(2) : Math.round(flow.entradas)} {prod.unidad}
                             </TableCell>
                             <TableCell className="text-right text-red-500 font-semibold">
-                              -{flow.salidas.toFixed(2)} {prod.unidad}
+                              -{prod.unidad === 'kg' ? flow.salidas.toFixed(2) : Math.round(flow.salidas)} {prod.unidad}
                             </TableCell>
                             <TableCell className={`text-right font-black ${netFlow > 0 ? 'text-emerald-500' : netFlow < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                              {netFlow > 0 ? '+' : ''}{netFlow.toFixed(2)} {prod.unidad}
+                              {netFlow > 0 ? '+' : ''}{prod.unidad === 'kg' ? netFlow.toFixed(2) : Math.round(netFlow)} {prod.unidad}
                             </TableCell>
                             <TableCell className="text-right font-bold text-foreground">
-                              {stock.toFixed(2)} {prod.unidad}
+                              {prod.unidad === 'kg' ? stock.toFixed(2) : Math.round(stock)} {prod.unidad}
                             </TableCell>
                             <TableCell className="text-center pr-6">
                               {stock < 5 ? (
@@ -1775,11 +2709,13 @@ function ContabilidadPage() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+            </div>
+          )}
 
           {/* TAB 6: AI ACCOUNTING ASSISTANT */}
-          <TabsContent value="ai-assistant" className="mt-0 outline-none">
-            <Card className="border border-border/50 max-w-3xl mx-auto rounded-[2rem] overflow-hidden shadow-lg bg-card/60 backdrop-blur-md flex flex-col h-[75vh]">
+          {activeTab === 'ai-assistant' && (
+            <div className="mt-0 outline-none">
+              <Card className="border border-border/50 max-w-3xl mx-auto rounded-[2rem] overflow-hidden shadow-lg bg-card/60 backdrop-blur-md flex flex-col h-[75vh]">
               <CardHeader className="border-b border-border/40 bg-gradient-to-r from-indigo-500/5 to-purple-500/5 px-5 py-4 shrink-0">
                 <div className="flex items-center gap-2">
                   <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-500 dark:text-indigo-400">
@@ -1917,25 +2853,26 @@ function ContabilidadPage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* DETALLE DE FACTURA / COMPRA DIALOG */}
       <Dialog open={facturaDetalleOpen} onOpenChange={setFacturaDetalleOpen}>
-        <DialogContent className="w-[95vw] sm:w-[90vw] md:max-w-[800px] p-0 bg-slate-950 dark:bg-[#090d16] border border-slate-800 text-slate-100 rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+        <DialogContent className="w-[95vw] sm:w-[90vw] md:max-w-[800px] p-0 bg-white dark:bg-card border border-border/85 text-foreground rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
           {selectedFactura && (
             <>
               {/* Header */}
-              <DialogHeader className="p-4 sm:p-6 pb-3 sm:pb-4 border-b border-slate-800 bg-slate-900/50 dark:bg-slate-950/20 text-left">
-                <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-wider text-slate-200 flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <DialogHeader className="p-4 sm:p-6 pb-3 sm:pb-4 border-b border-border/40 bg-muted/20 dark:bg-muted/10 text-left">
+                <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-wider text-foreground flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                     <FileText className="h-4 w-4" />
                   </div>
                   Detalle del Comprobante: N° {selectedFactura.numero_documento || selectedFactura.numero_factura}
                 </DialogTitle>
-                <DialogDescription className="text-xs font-semibold text-slate-400 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                  Tipo: <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-bold uppercase text-[10px] tracking-wide">{selectedFactura.tipo_documento || 'Factura'}</span>
+                <DialogDescription className="text-xs font-semibold text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  Tipo: <span className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/40 font-bold uppercase text-[10px] tracking-wide">{selectedFactura.tipo_documento || 'Factura'}</span>
                   <span>|</span>
                   <span className="flex items-center gap-1">
                     <Calendar className="h-3.5 w-3.5 opacity-60" />
@@ -1945,43 +2882,43 @@ function ContabilidadPage() {
               </DialogHeader>
 
               {/* Scrollable Content */}
-              <div className="p-4 sm:p-6 overflow-y-auto space-y-4 sm:space-y-6 flex-1 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+              <div className="p-4 sm:p-6 overflow-y-auto space-y-4 sm:space-y-6 flex-1 scrollbar-thin scrollbar-thumb-muted-foreground/10 scrollbar-track-transparent">
                 {/* Meta details grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
-                  <div className="p-3 bg-slate-900/40 border border-slate-800/60 rounded-2xl">
-                    <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block mb-1">Proveedor</span>
+                  <div className="p-3 bg-muted/40 dark:bg-card border border-border/60 rounded-2xl">
+                    <span className="text-[9px] text-muted-foreground uppercase font-black tracking-wider block mb-1">Proveedor</span>
                     <div className="flex items-center gap-1.5">
-                      <User className="h-3.5 w-3.5 text-slate-500" />
-                      <span className="text-xs text-slate-200 font-extrabold truncate">{selectedFactura.proveedor_nombre}</span>
+                      <User className="h-3.5 w-3.5 text-muted-foreground/60" />
+                      <span className="text-xs text-foreground font-extrabold truncate">{selectedFactura.proveedor_nombre}</span>
                     </div>
                   </div>
 
-                  <div className="p-3 bg-slate-900/40 border border-slate-800/60 rounded-2xl">
-                    <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block mb-1">RUT Proveedor</span>
+                  <div className="p-3 bg-muted/40 dark:bg-card border border-border/60 rounded-2xl">
+                    <span className="text-[9px] text-muted-foreground uppercase font-black tracking-wider block mb-1">RUT Proveedor</span>
                     <div className="flex items-center gap-1.5 font-mono">
-                      <Info className="h-3.5 w-3.5 text-slate-500" />
-                      <span className="text-xs text-slate-300 font-semibold truncate">{selectedFactura.proveedor_rut || 'S/R'}</span>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground/60" />
+                      <span className="text-xs text-foreground font-semibold truncate">{selectedFactura.proveedor_rut || 'S/R'}</span>
                     </div>
                   </div>
 
-                  <div className="p-3 bg-slate-900/40 border border-slate-800/60 rounded-2xl">
-                    <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block mb-1">Método de Pago</span>
+                  <div className="p-3 bg-muted/40 dark:bg-card border border-border/60 rounded-2xl">
+                    <span className="text-[9px] text-muted-foreground uppercase font-black tracking-wider block mb-1">Método de Pago</span>
                     <div className="flex items-center gap-1.5">
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide ${
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide border ${
                         selectedFactura.metodo_pago === 'efectivo'
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
                           : selectedFactura.metodo_pago === 'transferencia'
-                          ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                          : 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                          ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
+                          : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
                       }`}>
                         {selectedFactura.metodo_pago}
                       </span>
                     </div>
                   </div>
 
-                  <div className="p-3 bg-slate-900/40 border border-slate-800/60 rounded-2xl flex flex-col justify-center">
-                    <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block mb-0.5">Total Compra</span>
-                    <span className="text-indigo-400 font-black text-xs sm:text-sm md:text-base">
+                  <div className="p-3 bg-muted/40 dark:bg-card border border-border/60 rounded-2xl flex flex-col justify-center">
+                    <span className="text-[9px] text-muted-foreground uppercase font-black tracking-wider block mb-0.5">Total Compra</span>
+                    <span className="text-indigo-600 dark:text-indigo-400 font-black text-xs sm:text-sm md:text-base">
                       {formatCLPCurrency(selectedFactura.total)}
                     </span>
                   </div>
@@ -1990,11 +2927,11 @@ function ContabilidadPage() {
                 {/* Receipt Image */}
                 {selectedFactura.imagen_factura_url ? (
                   <div className="space-y-2">
-                    <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block">Foto del Comprobante Adjunto</span>
-                    <div className="relative w-full h-36 sm:h-48 md:h-56 rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center group transition-all duration-300 hover:border-slate-700/80 shadow-2xl">
+                    <span className="text-[9px] text-muted-foreground uppercase font-black tracking-wider block">Foto del Comprobante Adjunto</span>
+                    <div className="relative w-full h-36 sm:h-48 md:h-56 rounded-2xl overflow-hidden bg-muted/20 border border-border flex items-center justify-center group transition-all duration-300 hover:border-primary/20 shadow-lg">
                       <img src={selectedFactura.imagen_factura_url} alt="Comprobante de compra" className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-between p-4">
-                        <span className="text-[10px] text-slate-300 font-bold bg-slate-900/80 px-2.5 py-1 rounded-lg backdrop-blur-md hidden sm:inline-block">Vista Previa del Documento</span>
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-between p-4">
+                        <span className="text-[10px] text-white/80 font-bold bg-black/60 px-2.5 py-1 rounded-lg backdrop-blur-md hidden sm:inline-block">Vista Previa del Documento</span>
                         <a
                           href={selectedFactura.imagen_factura_url}
                           target="_blank"
@@ -2008,27 +2945,56 @@ function ContabilidadPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="p-6 border border-dashed border-slate-800 rounded-2xl text-center text-xs text-slate-400 flex flex-col items-center justify-center gap-2 bg-slate-950/20 hover:bg-slate-950/30 transition-colors">
-                    <Camera className="h-6 w-6 text-slate-600 opacity-60" />
-                    <span className="font-semibold">Sin imagen o archivo de comprobante adjunto.</span>
+                  <div className="p-6 border border-dashed border-border rounded-2xl text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-3 bg-muted/10 hover:bg-muted/20 transition-all">
+                    <Camera className="h-8 w-8 text-indigo-500/80" />
+                    <div className="flex flex-col gap-1 items-center">
+                      <span className="font-bold text-foreground">Sin imagen o archivo de comprobante adjunto</span>
+                      <p className="text-[10px] opacity-75">Sube una foto de la boleta o factura para respaldar esta compra.</p>
+                    </div>
+                    
+                    <Button 
+                      type="button"
+                      disabled={subiendoImagenDetalle}
+                      onClick={() => fileInputDetalleRef.current?.click()}
+                      className="mt-2 rounded-xl text-[10px] font-bold h-8 px-4 bg-primary text-white hover:bg-primary/95 flex items-center gap-1.5"
+                    >
+                      {subiendoImagenDetalle ? (
+                        <>
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Subiendo...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-3.5 w-3.5" />
+                          Adjuntar Comprobante
+                        </>
+                      )}
+                    </Button>
+                    <input
+                      type="file"
+                      ref={fileInputDetalleRef}
+                      onChange={handleAgregarImagenDetalle}
+                      accept="image/*"
+                      className="hidden"
+                    />
                   </div>
                 )}
 
                 {/* Items and Stock Duration Table */}
                 <div className="space-y-2">
-                  <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block">Detalle de Artículos y Rendimiento de Stock</span>
+                  <span className="text-[9px] text-muted-foreground uppercase font-black tracking-wider block">Detalle de Artículos y Rendimiento de Stock</span>
                   
-                  <div className="rounded-2xl border border-slate-800 overflow-hidden bg-slate-950/30 backdrop-blur-md">
-                    <div className="overflow-x-auto w-full scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+                  <div className="rounded-2xl border border-border overflow-hidden bg-card">
+                    <div className="overflow-x-auto w-full scrollbar-thin scrollbar-thumb-muted-foreground/10 scrollbar-track-transparent">
                       <Table className="min-w-[650px]">
                         <TableHeader>
-                          <TableRow className="border-b border-slate-800 bg-slate-950/50 hover:bg-slate-950/50">
-                            <TableHead className="py-3 pl-4 text-slate-400 font-black uppercase text-[9px] tracking-wider">Producto</TableHead>
-                            <TableHead className="py-3 text-right text-slate-400 font-black uppercase text-[9px] tracking-wider">Cantidad Compra</TableHead>
-                            <TableHead className="py-3 text-right text-slate-400 font-black uppercase text-[9px] tracking-wider">Costo Unit</TableHead>
-                            <TableHead className="py-3 text-right text-slate-400 font-black uppercase text-[9px] tracking-wider">Stock Actual</TableHead>
-                            <TableHead className="py-3 text-right text-slate-400 font-black uppercase text-[9px] tracking-wider">Ventas Diarias (Promedio)</TableHead>
-                            <TableHead className="py-3 text-right pr-4 text-slate-400 font-black uppercase text-[9px] tracking-wider">Duración Estimada</TableHead>
+                          <TableRow className="border-b border-border bg-muted/20 dark:bg-muted/10">
+                            <TableHead className="py-3 pl-4 text-muted-foreground font-black uppercase text-[9px] tracking-wider">Producto</TableHead>
+                            <TableHead className="py-3 text-right text-muted-foreground font-black uppercase text-[9px] tracking-wider">Cantidad Compra</TableHead>
+                            <TableHead className="py-3 text-right text-muted-foreground font-black uppercase text-[9px] tracking-wider">Costo Unit</TableHead>
+                            <TableHead className="py-3 text-right text-muted-foreground font-black uppercase text-[9px] tracking-wider">Stock Actual</TableHead>
+                            <TableHead className="py-3 text-right text-muted-foreground font-black uppercase text-[9px] tracking-wider">Ventas Diarias (Promedio)</TableHead>
+                            <TableHead className="py-3 text-right pr-4 text-muted-foreground font-black uppercase text-[9px] tracking-wider">Duración Estimada</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -2038,8 +3004,12 @@ function ContabilidadPage() {
                             const velVenta = velocidadesVenta[item.producto_id] || 0;
                             const unidad = catalogProd ? catalogProd.unidad : 'unidades';
                             
+                            // Boxes and kilograms details
+                            const cantCaja = item.cantidad_por_caja || catalogProd?.cantidad_por_caja;
+                            const empaqueLabel = catalogProd?.tipo_empaque || 'Caja';
+
                             let diasStock = 'Sin ventas';
-                            let badgeStyle = 'bg-slate-800/40 text-slate-400 border-slate-700/50';
+                            let badgeStyle = 'bg-muted text-muted-foreground border-border/50';
                             let esCritico = false;
                             
                             if (velVenta > 0) {
@@ -2047,23 +3017,30 @@ function ContabilidadPage() {
                               diasStock = `${Math.round(dias)} días`;
                               if (dias < 7) {
                                 esCritico = true;
-                                badgeStyle = 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse';
+                                badgeStyle = 'bg-red-500/10 text-red-500 border-red-500/20 dark:text-red-400 dark:border-red-500/20 animate-pulse';
                               } else if (dias < 15) {
-                                badgeStyle = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+                                badgeStyle = 'bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400';
                               } else {
-                                badgeStyle = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                                badgeStyle = 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400';
                               }
                             }
 
                             return (
-                              <TableRow key={idx} className="border-b border-slate-800/50 hover:bg-slate-900/30 text-xs">
-                                <TableCell className="font-extrabold py-3.5 pl-4 text-slate-200 whitespace-nowrap">{item.nombre}</TableCell>
-                                <TableCell className="text-right py-3.5 font-bold text-slate-300">
-                                  {item.cantidad} {unidad}
+                              <TableRow key={idx} className="border-b border-border/50 hover:bg-muted/10 text-xs text-foreground">
+                                <TableCell className="font-extrabold py-3.5 pl-4 whitespace-nowrap">{item.nombre}</TableCell>
+                                <TableCell className="text-right py-3.5 font-bold">
+                                  <div className="flex flex-col items-end">
+                                    <span>{unidad === 'kg' ? item.cantidad : Math.round(item.cantidad)} {unidad}</span>
+                                    {cantCaja && cantCaja > 1 && (
+                                      <span className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                                        {((item.cantidad / cantCaja) % 1 === 0 ? (item.cantidad / cantCaja) : (item.cantidad / cantCaja).toFixed(1))} {empaqueLabel}(s) de {unidad === 'kg' ? (cantCaja % 1 === 0 ? cantCaja : cantCaja.toFixed(2)) : Math.round(cantCaja)} {unidad}
+                                      </span>
+                                    )}
+                                  </div>
                                 </TableCell>
-                                <TableCell className="text-right py-3.5 font-mono text-slate-300">{formatCLPCurrency(item.costo_unitario)}</TableCell>
-                                <TableCell className="text-right py-3.5 font-mono font-bold text-slate-300">{stockActual.toFixed(2)}</TableCell>
-                                <TableCell className="text-right py-3.5 text-slate-400">{velVenta > 0 ? `${velVenta.toFixed(2)}/día` : '-'}</TableCell>
+                                <TableCell className="text-right py-3.5 font-mono">{formatCLPCurrency(item.costo_unitario)}</TableCell>
+                                <TableCell className="text-right py-3.5 font-mono font-bold">{unidad === 'kg' ? stockActual.toFixed(2) : Math.round(stockActual)}</TableCell>
+                                <TableCell className="text-right py-3.5 text-muted-foreground">{velVenta > 0 ? `${unidad === 'kg' ? velVenta.toFixed(2) : Math.round(velVenta)}/día` : '-'}</TableCell>
                                 <TableCell className="text-right py-3.5 pr-4">
                                   <div className="flex justify-end">
                                     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wide border ${badgeStyle}`}>
@@ -2077,7 +3054,7 @@ function ContabilidadPage() {
                           })}
                           {(!selectedFactura.productos || selectedFactura.productos.length === 0) && (
                             <TableRow>
-                              <TableCell colSpan={6} className="text-center py-6 text-slate-500 text-xs font-semibold">
+                              <TableCell colSpan={6} className="text-center py-6 text-muted-foreground text-xs font-semibold">
                                 No se encontraron productos registrados en este comprobante.
                               </TableCell>
                             </TableRow>
@@ -2090,10 +3067,10 @@ function ContabilidadPage() {
               </div>
 
               {/* Footer */}
-              <div className="p-4 border-t border-slate-800 flex justify-end shrink-0 bg-slate-900/50 dark:bg-slate-950/20">
+              <div className="p-4 border-t border-border flex justify-end shrink-0 bg-muted/20 dark:bg-muted/10">
                 <Button
                   onClick={() => setFacturaDetalleOpen(false)}
-                  className="rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs px-4 h-9 border border-slate-700/50 transition-all duration-200"
+                  className="rounded-xl bg-secondary hover:bg-secondary/80 text-secondary-foreground font-bold text-xs px-4 h-9 border border-border/50 transition-all duration-200"
                 >
                   Cerrar
                 </Button>
@@ -2170,10 +3147,11 @@ function ContabilidadPage() {
                 <Label htmlFor="capital_monto" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Monto Total ($)</Label>
                 <Input
                   id="capital_monto"
-                  type="number"
-                  placeholder="Ej: 1500000"
+                  inputMode="numeric"
+                  placeholder="Ej: $1.500.000"
                   value={capitalMonto}
-                  onChange={(e) => setCapitalMonto(e.target.value)}
+                  onChange={(e) => setCapitalMonto(e.target.value.replace(/[^\d.]/g, ''))}
+                  onBlur={() => { const v = parseChileanMoneyInput(capitalMonto); setCapitalMonto(v > 0 ? formatCLPCurrency(v) : ''); }}
                   className="h-9 text-xs"
                   required
                 />
@@ -2184,10 +3162,11 @@ function ContabilidadPage() {
                   <Label htmlFor="capital_monto_caja" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Monto en Caja ($)</Label>
                   <Input
                     id="capital_monto_caja"
-                    type="number"
-                    placeholder="Ej: 500000"
+                    inputMode="numeric"
+                    placeholder="Ej: $500.000"
                     value={capitalMontoCaja}
-                    onChange={(e) => setCapitalMontoCaja(e.target.value)}
+                    onChange={(e) => setCapitalMontoCaja(e.target.value.replace(/[^\d.]/g, ''))}
+                    onBlur={() => { const v = parseChileanMoneyInput(capitalMontoCaja); setCapitalMontoCaja(v > 0 ? formatCLPCurrency(v) : ''); }}
                     className="h-9 text-xs"
                     required
                   />
@@ -2196,10 +3175,11 @@ function ContabilidadPage() {
                   <Label htmlFor="capital_monto_banco" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Monto en Banco ($)</Label>
                   <Input
                     id="capital_monto_banco"
-                    type="number"
-                    placeholder="Ej: 1000000"
+                    inputMode="numeric"
+                    placeholder="Ej: $1.000.000"
                     value={capitalMontoBanco}
-                    onChange={(e) => setCapitalMontoBanco(e.target.value)}
+                    onChange={(e) => setCapitalMontoBanco(e.target.value.replace(/[^\d.]/g, ''))}
+                    onBlur={() => { const v = parseChileanMoneyInput(capitalMontoBanco); setCapitalMontoBanco(v > 0 ? formatCLPCurrency(v) : ''); }}
                     className="h-9 text-xs"
                     required
                   />

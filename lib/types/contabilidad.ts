@@ -46,6 +46,7 @@ export interface FacturaCompra {
     nombre: string;
     cantidad: number;
     costo_unitario: number;
+    cantidad_por_caja?: number;
   }[];
   imagen_factura_url?: string;
   createdAt: Timestamp;

@@ -1,17 +1,20 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot, doc, addDoc, updateDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, addDoc, updateDoc, setDoc, Timestamp, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { uploadImage } from '@/lib/firebase/storage';
 import { Producto } from '@/lib/types/pos';
 import { CostosService } from '@/lib/services/costos.service';
 import { ContabilidadService } from '@/lib/services/contabilidad.service';
+// Removed UsuariosService import
+import { useAuth } from '@/lib/auth-context';
 import { AppNav } from '@/components/layout/app-nav';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { formatCLPCurrency, normalizeMoneyInput, parseChileanMoneyInput, roundToChileanDecena, compressImage } from '@/lib/utils';
@@ -23,6 +26,7 @@ import {
   Hash, 
   Camera, 
   Sparkles, 
+  ShieldAlert, 
   Calendar, 
   Barcode, 
   Clock, 
@@ -53,6 +57,10 @@ function AdminPage() {
   const [productoCompra, setProductoCompra] = useState<Producto | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [analizandoIA, setAnalizandoIA] = useState(false);
+
+  const { toast } = useToast();
+
+  // User Management functions removed (moved to configuration page);
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -95,8 +103,6 @@ function AdminPage() {
   // Restock invoice image state
   const [compraImagen, setCompraImagen] = useState<LocalImage | null>(null);
   const fileInputCompraRef = useRef<HTMLInputElement>(null);
-
-  const { toast } = useToast();
 
   // Load products in real-time
   useEffect(() => {
@@ -628,7 +634,7 @@ function AdminPage() {
 
       toast({
         title: 'Compra registrada',
-        description: `Ingresados ${stockAIngresar.toFixed(2)} ${productoCompra.unidad} al inventario.`
+        description: `Ingresados ${productoCompra.unidad === 'kg' ? stockAIngresar.toFixed(2) : Math.round(stockAIngresar)} ${productoCompra.unidad} al inventario.`
       });
       setModalCompraOpen(false);
     } catch (err: any) {
@@ -657,7 +663,8 @@ function AdminPage() {
     if (tabActiva === 'catalogo') {
       return p.es_interes !== true;
     } else {
-      return p.es_interes === true;
+      // Lista de Compra: manually flagged (es_interes === true) OR under stock threshold (stock_actual <= 5)
+      return p.es_interes === true || (p.activo !== false && p.stock_actual <= 5);
     }
   });
 
@@ -684,10 +691,10 @@ function AdminPage() {
         </div>
 
         {/* Tab Selector */}
-        <div className="flex border-b border-border/50 mb-6 gap-6">
+        <div className="flex border-b border-border/50 mb-6 gap-6 overflow-x-auto">
           <button
             onClick={() => setTabActiva('catalogo')}
-            className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 ${
+            className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 whitespace-nowrap ${
               tabActiva === 'catalogo'
                 ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -698,167 +705,228 @@ function AdminPage() {
           
           <button
             onClick={() => setTabActiva('interes')}
-            className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 relative ${
+            className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 relative whitespace-nowrap ${
               tabActiva === 'interes'
                 ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
-            Lista de Interés / Cotizaciones ({productos.filter(p => p.es_interes === true).length})
+            Lista de Compra ({productos.filter(p => p.es_interes === true || (p.activo !== false && p.stock_actual <= 5)).length})
           </button>
         </div>
 
-        {/* Grid of Products */}
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {productosFiltrados.map((producto) => {
-            const diasRestantes = producto.fecha_caducidad ? obtenerDiasParaVencer(producto.fecha_caducidad) : null;
-            const estaVencido = diasRestantes !== null && diasRestantes < 0;
-            const proximoAVencer = diasRestantes !== null && diasRestantes >= 0 && diasRestantes <= 30;
+        {/* Grid or Table of Products */}
+        {tabActiva === 'catalogo' ? (
+          <>
+            {productosFiltrados.length === 0 ? (
+              <div className="text-center py-16 border-2 border-dashed border-border rounded-[2rem] bg-card/30">
+                <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4 opacity-40" />
+                <h3 className="text-lg font-bold mb-1">Catálogo Vacío</h3>
+                <p className="text-muted-foreground text-sm mb-6 max-w-sm mx-auto">
+                  Comienza agregando productos a tu catálogo activo.
+                </p>
+                <Button onClick={() => handleAbrirModal()} className="rounded-xl">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Crear Producto
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {productosFiltrados.map((producto) => {
+                  const diasRestantes = producto.fecha_caducidad ? obtenerDiasParaVencer(producto.fecha_caducidad) : null;
+                  const estaVencido = diasRestantes !== null && diasRestantes < 0;
+                  const proximoAVencer = diasRestantes !== null && diasRestantes >= 0 && diasRestantes <= 30;
 
-            return (
-              <Card key={producto.id} className="rounded-[2rem] border-border/50 shadow-sm overflow-hidden flex flex-col justify-between transition-all duration-300 hover:shadow-lg hover:border-primary/20">
-                <div>
-                  {producto.imagen_url ? (
-                    <div className="relative h-48 w-full overflow-hidden bg-muted">
-                      <img 
-                        src={producto.imagen_url} 
-                        alt={producto.nombre} 
-                        className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
-                      />
-                      {producto.sku && (
-                        <span className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md text-white text-[10px] font-black tracking-wider px-2.5 py-1 rounded-lg flex items-center gap-1.5">
-                          <Barcode className="h-3.5 w-3.5" />
-                          {producto.sku}
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="relative h-48 w-full bg-muted/20 flex items-center justify-center text-muted-foreground">
-                      <Package className="h-10 w-10 opacity-20" />
-                      {producto.sku && (
-                        <span className="absolute bottom-3 left-3 bg-muted border border-border text-foreground text-[10px] font-black tracking-wider px-2.5 py-1 rounded-lg flex items-center gap-1.5">
-                          <Barcode className="h-3.5 w-3.5" />
-                          {producto.sku}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  <CardHeader className="space-y-1 pt-5">
-                    <CardTitle className="flex items-start justify-between gap-3">
-                      <span className="truncate text-lg font-black tracking-tight text-foreground" title={producto.nombre}>
-                        {producto.nombre}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleAbrirModal(producto)}
-                        className="h-9 w-9 rounded-xl bg-muted/40 hover:bg-primary/10 hover:text-primary transition-all duration-200 shrink-0"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    </CardTitle>
-                  </CardHeader>
-
-                  <CardContent className="space-y-3 pb-6">
-                    {producto.fecha_caducidad && (
-                      <div className={`flex items-center gap-2 rounded-xl p-2.5 text-xs font-semibold ${
-                        estaVencido ? 'bg-red-500/10 text-red-600 dark:text-red-400' :
-                        proximoAVencer ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
-                        'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                      }`}>
-                        {estaVencido ? <AlertTriangle className="h-4 w-4 shrink-0" /> : <Clock className="h-4 w-4 shrink-0" />}
-                        <div className="flex-1 truncate">
-                          Vence: <span className="font-bold">{producto.fecha_caducidad}</span>
-                          <span className="ml-1 text-[10px] opacity-80">
-                            ({estaVencido ? 'Vencido' : `${diasRestantes} días`})
+                  return (
+                    <Card key={producto.id} className="rounded-2xl border-border/50 shadow-sm overflow-hidden flex flex-row items-center p-3 gap-3 transition-all duration-300 hover:shadow-md hover:border-primary/20 bg-card">
+                      {/* Product Image Thumbnail */}
+                      <div className="relative h-20 w-20 shrink-0 overflow-hidden bg-muted rounded-xl border border-border/40 flex items-center justify-center">
+                        {producto.imagen_url ? (
+                          <img 
+                            src={producto.imagen_url} 
+                            alt={producto.nombre} 
+                            className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
+                          />
+                        ) : (
+                          <Package className="h-8 w-8 text-muted-foreground opacity-30" />
+                        )}
+                        {producto.sku && (
+                          <span className="absolute bottom-1 left-1 bg-black/60 backdrop-blur-md text-white text-[8px] font-black tracking-wider px-1 py-0.5 rounded flex items-center gap-0.5">
+                            <Barcode className="h-2 w-2" />
+                            {producto.sku.slice(-4)}
                           </span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="space-y-2 text-xs font-medium">
-                      {!producto.es_interes && (
-                        <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/40 p-2.5">
-                          <span className="text-muted-foreground">Precio de Venta:</span>
-                          <span className="font-bold text-foreground text-sm">{formatCLPCurrency(producto.precio)}</span>
-                        </div>
-                      )}
-                      
-                      {!producto.es_interes && (
-                        <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/40 p-2.5">
-                          <span className="text-muted-foreground">Impuesto:</span>
-                          <span className={`font-bold ${producto.facturable !== false ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                            {producto.facturable !== false ? 'Afecto a IVA (19%)' : 'Exento (Sin IVA)'}
-                          </span>
-                        </div>
-                      )}
-                      
-                      {producto.precio_caja && producto.precio_caja > 0 && (
-                        <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/40 p-2.5">
-                          <span className="text-muted-foreground">Precio {producto.tipo_empaque || 'Caja'}:</span>
-                          <span className="font-bold text-indigo-500 text-sm">{formatCLPCurrency(producto.precio_caja)}</span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/40 p-2.5">
-                        <span className="text-muted-foreground">{producto.es_interes ? 'Costo Cotizado:' : 'Costo Compra:'}</span>
-                        <span className="font-semibold text-foreground">
-                          {producto.costo_actual ? `${formatCLPCurrency(producto.costo_actual)}/${producto.unidad}` : 'Sin registrar'}
-                        </span>
+                        )}
                       </div>
 
-                      {!producto.es_interes ? (
-                        <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/40 p-2.5">
-                          <span className="text-muted-foreground">Stock Actual:</span>
-                          <span className={`font-bold ${
-                            producto.stock_actual < 5 ? 'text-red-500 font-black' :
-                            producto.stock_actual < 15 ? 'text-amber-500' :
-                            'text-emerald-500'
+                      {/* Product Info */}
+                      <div className="flex-1 min-w-0 flex flex-col justify-between h-20 py-0.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="truncate text-sm font-black tracking-tight text-foreground flex items-center gap-1.5" title={producto.nombre}>
+                            {producto.nombre}
+                            {producto.fecha_caducidad && (
+                              <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${
+                                estaVencido ? 'bg-red-500 animate-pulse' :
+                                proximoAVencer ? 'bg-amber-500' :
+                                'bg-emerald-500'
+                              }`} title={estaVencido ? 'Vencido' : proximoAVencer ? 'Próximo a vencer' : 'Vence pronto'} />
+                            )}
+                          </h3>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleAbrirModal(producto)}
+                            className="h-7 w-7 rounded-lg bg-muted hover:bg-primary/10 hover:text-primary transition-all duration-200 shrink-0"
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mt-0.5">
+                          <span className="text-xs font-bold text-foreground">{formatCLPCurrency(producto.precio)}</span>
+                          {producto.costo_actual && (
+                            <span className="text-[10px] text-muted-foreground">
+                              Costo: {formatCLPCurrency(producto.costo_actual)}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between mt-1">
+                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                            producto.stock_actual < 5 ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
+                            producto.stock_actual < 15 ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                            'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
                           }`}>
-                            {producto.stock_actual.toFixed(2)} {producto.unidad}
+                            Stock: {producto.unidad === 'kg' ? producto.stock_actual.toFixed(2) : Math.round(producto.stock_actual)} {producto.unidad}
                           </span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-between gap-3 rounded-xl bg-indigo-500/5 border border-indigo-500/10 p-2.5">
-                          <span className="text-indigo-600 dark:text-indigo-400 font-bold">Estado:</span>
-                          <span className="font-black text-indigo-600 dark:text-indigo-400 uppercase text-[10px]">COTIZACIÓN</span>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </div>
 
-                <div className="px-6 pb-6 pt-0">
-                  <Button
-                    onClick={() => handleAbrirModalCompra(producto)}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl h-11 text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-indigo-500/10 active:scale-95 transition-all"
-                  >
-                    <ShoppingBag className="h-4 w-4" />
-                    Comprar / Abastecer {producto.tipo_empaque || 'Caja'}
-                  </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleAbrirModalCompra(producto)}
+                            className="h-7 px-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold flex items-center gap-1 transition-all"
+                          >
+                            <ShoppingBag className="h-3 w-3" />
+                            Comprar
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Lista de Compra Tabular */}
+            {productosFiltrados.length === 0 ? (
+              <div className="text-center py-16 border-2 border-dashed border-border rounded-[2rem] bg-card/30">
+                <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4 opacity-40" />
+                <h3 className="text-lg font-bold mb-1">Lista de Compra Vacía</h3>
+                <p className="text-muted-foreground text-sm mb-6 max-w-sm mx-auto">
+                  No hay productos que requieran reposición ni cotizaciones pendientes.
+                </p>
+                <Button onClick={() => handleAbrirModal()} className="rounded-xl">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nueva Cotización
+                </Button>
+              </div>
+            ) : (
+              <Card className="border border-border/50 overflow-hidden">
+                <div className="overflow-x-auto w-full">
+                  <Table className="min-w-[800px]">
+                    <TableHeader>
+                      <TableRow className="bg-muted/10">
+                        <TableHead className="pl-6 w-[30%]">Producto</TableHead>
+                        <TableHead className="w-[15%]">Último Costo</TableHead>
+                        <TableHead className="w-[15%]">Stock Actual</TableHead>
+                        <TableHead className="w-[15%]">Motivo</TableHead>
+                        <TableHead className="w-[25%] text-right pr-6">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {productosFiltrados.map((producto) => {
+                        // Calculate Motivo
+                        let motivoLabel = "Interés Manual";
+                        let motivoColor = "bg-indigo-500/10 text-indigo-500 border-indigo-500/20";
+                        if (!producto.es_interes) {
+                          if (producto.stock_actual <= 0) {
+                            motivoLabel = "Agotado";
+                            motivoColor = "bg-red-500/10 text-red-500 border-red-500/20";
+                          } else {
+                            motivoLabel = "Stock Bajo";
+                            motivoColor = "bg-amber-500/10 text-amber-500 border-amber-500/20";
+                          }
+                        }
+
+                        return (
+                          <TableRow key={producto.id} className="hover:bg-muted/5 transition-colors text-xs border-b last:border-0 border-border/30">
+                            {/* Product Name */}
+                            <TableCell className="font-bold pl-6 py-3.5 flex items-center gap-3">
+                              <div className="h-10 w-10 shrink-0 overflow-hidden bg-muted rounded-lg border border-border/40 flex items-center justify-center">
+                                {producto.imagen_url ? (
+                                  <img src={producto.imagen_url} alt={producto.nombre} className="h-full w-full object-cover" />
+                                ) : (
+                                  <Package className="h-5 w-5 text-muted-foreground opacity-30" />
+                                )}
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-black text-foreground text-sm">{producto.nombre}</span>
+                                {producto.sku && <span className="text-[10px] text-muted-foreground font-mono">SKU: {producto.sku}</span>}
+                              </div>
+                            </TableCell>
+
+                            {/* Cost */}
+                            <TableCell className="font-semibold text-foreground">
+                              {producto.costo_actual ? `${formatCLPCurrency(producto.costo_actual)} / ${producto.unidad}` : 'Sin datos'}
+                            </TableCell>
+
+                            {/* Stock */}
+                            <TableCell className="py-3.5">
+                              <span className={`font-bold text-sm ${
+                                producto.stock_actual < 5 ? 'text-red-500 font-black' : 'text-amber-500'
+                              }`}>
+                                {producto.unidad === 'kg' ? producto.stock_actual.toFixed(2) : Math.round(producto.stock_actual)} {producto.unidad}
+                              </span>
+                            </TableCell>
+
+                            {/* Motivo */}
+                            <TableCell className="py-3.5">
+                              <Badge className={`${motivoColor} font-bold text-[9px] uppercase tracking-wider border`}>
+                                {motivoLabel}
+                              </Badge>
+                            </TableCell>
+
+                            {/* Actions */}
+                            <TableCell className="text-right pr-6 py-3.5">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleAbrirModalCompra(producto)}
+                                  className="h-8 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1 shadow-md shadow-indigo-500/10 transition-all"
+                                >
+                                  <ShoppingBag className="h-3.5 w-3.5" />
+                                  Comprar / Abastecer
+                                </Button>
+                                
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleAbrirModal(producto)}
+                                  className="h-8 w-8 rounded-xl bg-muted/60 hover:bg-primary/10 hover:text-primary transition-all duration-200"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
               </Card>
-            );
-          })}
-        </div>
-
-        {productosFiltrados.length === 0 && (
-          <div className="text-center py-16 border-2 border-dashed border-border rounded-[2rem] bg-card/30">
-            <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4 opacity-40" />
-            <h3 className="text-lg font-bold mb-1">
-              {tabActiva === 'interes' ? 'No hay Cotizaciones' : 'Catálogo Vacío'}
-            </h3>
-            <p className="text-muted-foreground text-sm mb-6 max-w-sm mx-auto">
-              {tabActiva === 'interes' 
-                ? 'Agrega productos en lista de interés para cotizar y comprar más adelante.' 
-                : 'Comienza agregando productos a tu catálogo activo.'}
-            </p>
-            <Button onClick={() => handleAbrirModal()} className="rounded-xl">
-              <Plus className="mr-2 h-4 w-4" />
-              {tabActiva === 'interes' ? 'Nueva Cotización' : 'Crear Producto'}
-            </Button>
-          </div>
+            )}
+          </>
         )}
       </div>
 
@@ -1312,7 +1380,7 @@ function AdminPage() {
                     </p>
                   </div>
                   <Badge variant="secondary" className="font-bold text-xs h-7 px-2.5">
-                    Stock actual: {productoCompra.stock_actual.toFixed(2)}
+                    Stock actual: {productoCompra.unidad === 'kg' ? productoCompra.stock_actual.toFixed(2) : Math.round(productoCompra.stock_actual)}
                   </Badge>
                 </div>
 
@@ -1436,7 +1504,7 @@ function AdminPage() {
                         <Package className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
                         Stock ingresado:
                       </span>
-                      <span>{(parseFloat(compraData.cajas_compradas) * parseFloat(compraData.cantidad_por_caja)).toFixed(2)} {productoCompra.unidad}</span>
+                      <span>{productoCompra.unidad === 'kg' ? (parseFloat(compraData.cajas_compradas) * parseFloat(compraData.cantidad_por_caja)).toFixed(2) : Math.round(parseFloat(compraData.cajas_compradas) * parseFloat(compraData.cantidad_por_caja))} {productoCompra.unidad}</span>
                     </div>
                     <div className="flex items-center justify-between text-xs font-bold text-indigo-600 dark:text-indigo-400">
                       <span className="flex items-center gap-1.5">
@@ -1607,6 +1675,8 @@ function AdminPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* DIALOG CREAR USUARIO REMOVED */}
     </div>
   );
 }

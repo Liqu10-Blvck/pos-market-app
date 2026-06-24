@@ -158,4 +158,12 @@
   .dark .custom-scrollbar::-webkit-scrollbar-thumb {
     @apply bg-muted-foreground/5 hover:bg-muted-foreground/15;
   }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }

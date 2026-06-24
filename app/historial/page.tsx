@@ -40,6 +40,7 @@ function HistorialPage() {
   const [sesiones, setSesiones] = useState<SesionCaja[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [activeTab, setActiveTab] = useState<'diario' | 'sesiones' | 'reposicion'>('diario');
 
   // Date range filters (default to last 30 days)
   const [fechaInicio, setFechaInicio] = useState<string>(() => {
@@ -292,25 +293,49 @@ function HistorialPage() {
 
       {/* Main Content Area */}
       <div className="mx-auto w-full max-w-screen-2xl px-3 sm:px-6 py-6">
-        <Tabs defaultValue="diario" className="w-full">
-          <TabsList className="w-full max-w-md grid grid-cols-3 gap-2 bg-muted/30 p-1.5 rounded-2xl mb-6 border border-border/10">
-            <TabsTrigger value="diario" className="rounded-xl text-xs font-bold py-2.5">
+        <div className="w-full">
+          <div className="w-full overflow-x-auto overflow-y-hidden no-scrollbar border-b border-border/50 mb-6 flex gap-6">
+            <button
+              onClick={() => setActiveTab('diario')}
+              className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 whitespace-nowrap ${
+                activeTab === 'diario'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
               Ventas por Día
-            </TabsTrigger>
-            <TabsTrigger value="sesiones" className="rounded-xl text-xs font-bold py-2.5">
+            </button>
+            <button
+              onClick={() => setActiveTab('sesiones')}
+              className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 whitespace-nowrap ${
+                activeTab === 'sesiones'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
               Sesiones de Caja
-            </TabsTrigger>
-            <TabsTrigger value="reposicion" className="rounded-xl text-xs font-bold py-2.5 flex items-center justify-center gap-1.5">
+            </button>
+            <button
+              onClick={() => setActiveTab('reposicion')}
+              className={`pb-3 text-sm font-bold border-b-2 transition-all duration-200 whitespace-nowrap relative ${
+                activeTab === 'reposicion'
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-black'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
               Reponer Stock
               {productosAReponer.length > 0 && (
-                <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                <span className="absolute -top-1.5 -right-3.5 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                </span>
               )}
-            </TabsTrigger>
-          </TabsList>
+            </button>
+          </div>
 
           {/* TAB 1: VENTAS POR DÍA */}
-          <TabsContent value="diario" className="mt-0 outline-none">
-            {ventasAgrupadasPorDia.length === 0 ? (
+          {activeTab === 'diario' && (
+            ventasAgrupadasPorDia.length === 0 ? (
               <Card className="border-dashed border-2 py-12 flex flex-col items-center justify-center text-center">
                 <ShoppingBag className="h-12 w-12 text-muted-foreground/40 mb-3" />
                 <CardTitle className="text-base text-muted-foreground">No se encontraron ventas</CardTitle>
@@ -565,11 +590,11 @@ function HistorialPage() {
                 </div>
 
               </div>
-            )}
-          </TabsContent>
+            )
+          )}
 
           {/* TAB 2: SESIONES DE CAJA */}
-          <TabsContent value="sesiones" className="mt-0 outline-none">
+          {activeTab === 'sesiones' && (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {sesiones.map((sesion) => (
                 <Card key={sesion.id} className="border border-border/50">
@@ -645,10 +670,10 @@ function HistorialPage() {
                 </div>
               )}
             </div>
-          </TabsContent>
+          )}
 
           {/* TAB 3: PRODUCTOS A REPONER */}
-          <TabsContent value="reposicion" className="mt-0 outline-none">
+          {activeTab === 'reposicion' && (
             <Card className="border border-border/50">
               <CardHeader className="py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
@@ -754,8 +779,8 @@ function HistorialPage() {
                 </Table>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+          )}
+        </div>
       </div>
     </div>
   );

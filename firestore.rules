@@ -74,5 +74,25 @@ service cloud.firestore {
     match /metadata/{documentId} {
       allow read, write: if isAuthenticated();
     }
+
+    // Usuarios: Lectura y escritura para autenticados
+    match /usuarios/{usuarioId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Metas Financieras: Lectura y escritura para autenticados
+    match /metas_financieras/{metaId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Gastos Programados: Lectura y escritura para autenticados
+    match /gastos_programados/{gastoId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Distribución de Fondos: Lectura y escritura para autenticados
+    match /distribucion_fondos/{distribucionId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }

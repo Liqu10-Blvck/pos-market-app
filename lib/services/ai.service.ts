@@ -62,4 +62,24 @@ export class AIService {
       return [];
     }
   }
+
+  /**
+   * Envía imágenes en formato base64 a la API interna para que Gemini analice y auto-complete los datos del producto.
+   */
+  static async analizarProductoConGemini(base64Images: string[]): Promise<any> {
+    const res = await fetch('/api/analyze-product', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ images: base64Images }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Error al procesar el análisis con Gemini.');
+    }
+    return data;
+  }
 }
+

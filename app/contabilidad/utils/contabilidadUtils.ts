@@ -1,6 +1,6 @@
 import { AsientoContable, FacturaCompra } from '@/lib/types/contabilidad';
 import { ContabilidadService } from '@/lib/services/contabilidad.service';
-import { Producto } from '@/lib/types/pos';
+import { Producto, Venta, ItemVenta } from '@/lib/types/pos';
 
 /**
  * Calculates percentage completion, capped at 100%.
@@ -16,7 +16,7 @@ export const calcPct = (actual: number, objetivo: number): number => {
 export const calcularProductFlow = (
   productos: Producto[],
   facturas: FacturaCompra[],
-  flujoVentas: any[],
+  flujoVentas: Venta[],
   flujoFechaInicio: string,
   flujoFechaFin: string
 ) => {
@@ -29,7 +29,7 @@ export const calcularProductFlow = (
   productos.forEach(p => {
     flow[p.id] = { entradas: 0, salidas: 0 };
   });
-
+ 
   // Accumulate purchases
   facturas.forEach(f => {
     const time = f.fecha.toDate().getTime();
@@ -45,7 +45,7 @@ export const calcularProductFlow = (
   // Accumulate sales
   flujoVentas.forEach(v => {
     if (v.items && Array.isArray(v.items)) {
-      v.items.forEach((item: any) => {
+      v.items.forEach((item: ItemVenta) => {
         const pid = item.producto_id;
         if (flow[pid]) {
           const qty = item.cantidad || item.neto || 0;

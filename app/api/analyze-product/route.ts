@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { verifySession } from '@/lib/api-auth';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,6 +10,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: 'No autorizado. Debes iniciar sesión con un usuario activo.' },
         { status: 401 }
+      );
+    }
+
+    const { success } = checkRateLimit(userSession.uid, 5, 60000);
+    if (!success) {
+      return NextResponse.json(
+        { error: 'Demasiadas solicitudes. Límite de 5 análisis por minuto alcanzado. Por favor, espera un momento.' },
+        { status: 429 }
       );
     }
 
@@ -105,10 +114,11 @@ Recuerda: Tu respuesta debe ser estrictamente un objeto JSON válido que coincid
         { status: 500 }
       );
     }
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Error interno del servidor al procesar las imágenes';
     console.error('Error al analizar producto con Gemini Vision:', error);
     return NextResponse.json(
-      { error: error.message || 'Error interno del servidor al procesar las imágenes' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

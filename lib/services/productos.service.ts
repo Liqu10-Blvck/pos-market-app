@@ -60,24 +60,24 @@ export class ProductosService {
       finalImageUrl = '';
     }
 
-    const productoData: any = {
+    const productoData: Omit<Producto, 'id' | 'createdAt'> & { updatedAt: Timestamp } = {
       nombre: data.nombre,
       precio: data.precio,
       unidad: data.unidad,
       stock_actual: data.stock_actual,
-      sku: data.sku || null,
-      fecha_caducidad: data.fecha_caducidad || null,
-      costo_actual: data.costo_actual !== undefined ? data.costo_actual : null,
-      margen_deseado: data.margen_deseado !== undefined ? data.margen_deseado : null,
+      sku: data.sku || undefined,
+      fecha_caducidad: data.fecha_caducidad || undefined,
+      costo_actual: data.costo_actual !== undefined ? data.costo_actual : undefined,
+      margen_deseado: data.margen_deseado !== undefined ? data.margen_deseado : undefined,
       es_interes: data.es_interes || false,
-      cantidad_por_caja: data.cantidad_por_caja !== undefined ? data.cantidad_por_caja : null,
-      precio_caja: data.precio_caja !== undefined ? data.precio_caja : null,
-      tipo_empaque: data.tipo_empaque ? data.tipo_empaque.trim() : null,
-      categoria: data.categoria ? data.categoria.trim() : null,
-      calidad: data.calidad ? data.calidad.trim() : null,
+      cantidad_por_caja: data.cantidad_por_caja !== undefined ? data.cantidad_por_caja : undefined,
+      precio_caja: data.precio_caja !== undefined ? data.precio_caja : undefined,
+      tipo_empaque: data.tipo_empaque ? data.tipo_empaque.trim() : undefined,
+      categoria: data.categoria ? data.categoria.trim() : undefined,
+      calidad: data.calidad ? data.calidad.trim() : undefined,
       facturable: data.facturable !== false,
       activo: true,
-      imagen_url: finalImageUrl || null,
+      imagen_url: finalImageUrl || undefined,
       updatedAt: Timestamp.now()
     };
 

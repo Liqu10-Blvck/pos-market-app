@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { verifySession } from '@/lib/api-auth';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,6 +10,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: 'No autorizado. Debes iniciar sesión con un usuario activo.' },
         { status: 401 }
+      );
+    }
+
+    const { success } = checkRateLimit(userSession.uid, 5, 60000);
+    if (!success) {
+      return NextResponse.json(
+        { error: 'Demasiadas solicitudes. Límite de 5 análisis de planillas por minuto alcanzado. Por favor, espera un momento.' },
+        { status: 429 }
       );
     }
 
@@ -151,11 +160,27 @@ ${JSON.stringify(rawRows, null, 2)}
     const result = await model.generateContent(prompt);
     const text = result.response.text();
 
-    const parsedResult = JSON.parse(text);
+    interface ParsedMayoristaItem {
+      id: string;
+      nombre: string;
+      costo_local: number;
+      precio_venta_local: number;
+      es_interes: boolean;
+      precio_referencia: number;
+      precio_referencia_full: number;
+      unidad_comercializacion: string;
+      unidad: string;
+      tipo_empaque: string;
+      cantidad_por_caja: number;
+      noExisteEnCatalogo: boolean;
+      calidad: string;
+    }
+
+    const parsedResult: ParsedMayoristaItem[] = JSON.parse(text);
 
     // Asegurar identificadores únicos para evitar duplicados de keys en React
     const seenIds = new Set<string>();
-    const cleanedResult = parsedResult.map((item: any) => {
+    const cleanedResult = parsedResult.map((item: ParsedMayoristaItem) => {
       let finalId = item.id;
       // Si el id ya fue visto, o si es un producto nuevo / id genérico, le asignamos uno único
       if (item.noExisteEnCatalogo || finalId.startsWith('new_') || seenIds.has(finalId)) {
@@ -169,10 +194,11 @@ ${JSON.stringify(rawRows, null, 2)}
     });
 
     return NextResponse.json(cleanedResult);
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Error interno del servidor al procesar la solicitud de IA.';
     console.error('Error en mayoristas-parser API:', error);
     return NextResponse.json(
-      { error: error.message || 'Error interno del servidor al procesar la solicitud de IA.' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

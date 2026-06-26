@@ -87,7 +87,7 @@ export class PedidosService {
   static async actualizarEstadoPago(id: string, estadoPago: EstadoPago, metodoPago?: MetodoPago): Promise<void> {
     try {
       const ref = doc(db, this.COLLECTION, id);
-      const updateData: any = {
+      const updateData: Partial<Omit<Pedido, 'id'>> = {
         estado_pago: estadoPago,
         updatedAt: Timestamp.now()
       };

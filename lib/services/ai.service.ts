@@ -1,6 +1,6 @@
 import { collection, addDoc, getDocs, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { ConsultaIALog } from '../types/pos';
+import { ConsultaIALog, ProductAnalysisResponse } from '../types/pos';
 
 export class AIService {
   private static readonly COLLECTION = 'consultas_ia';
@@ -66,7 +66,7 @@ export class AIService {
   /**
    * Envía imágenes en formato base64 a la API interna para que Gemini analice y auto-complete los datos del producto.
    */
-  static async analizarProductoConGemini(base64Images: string[]): Promise<any> {
+  static async analizarProductoConGemini(base64Images: string[]): Promise<ProductAnalysisResponse> {
     const token = await auth.currentUser?.getIdToken();
     const res = await fetch('/api/analyze-product', {
       method: 'POST',

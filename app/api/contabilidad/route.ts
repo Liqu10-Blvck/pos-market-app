@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { verifySession } from '@/lib/api-auth';
+import { AsientoContable, MovimientoContable } from '@/lib/types/contabilidad';
+import { ConsultaIALog } from '@/lib/types/pos';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,6 +12,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: 'No autorizado. Solo los administradores activos pueden consultar asesoría contable.' },
         { status: 401 }
+      );
+    }
+
+    const { success } = checkRateLimit(userSession.uid, 5, 60000);
+    if (!success) {
+      return NextResponse.json(
+        { error: 'Demasiadas solicitudes. Límite de 5 consultas contables por minuto alcanzado. Por favor, espera un momento.' },
+        { status: 429 }
       );
     }
 
@@ -45,16 +56,16 @@ export async function POST(req: NextRequest) {
     const historialStr = historial && Array.isArray(historial) && historial.length > 0
       ? `\n---
 HISTORIAL DE CONSULTAS ANTERIORES (Usa este contexto para responder de forma hilvanada, objetiva y no repetir consejos ya dados):
-${historial.map((h: any) => `* Comerciante: "${h.pregunta}"\n* Asistente IA (Tú): "${h.respuesta}"`).join('\n')}\n---`
+${(historial as ConsultaIALog[]).map((h: ConsultaIALog) => `* Comerciante: "${h.pregunta}"\n* Asistente IA (Tú): "${h.respuesta}"`).join('\n')}\n---`
       : '';
 
     // Construir la sección de movimientos recientes
     const recentAsientos = asientos && Array.isArray(asientos)
-      ? asientos.slice(0, 15).map((a: any) => {
+      ? (asientos as AsientoContable[]).slice(0, 15).map((a: AsientoContable) => {
           const dateStr = a.fecha && a.fecha.seconds 
             ? new Date(a.fecha.seconds * 1000).toLocaleDateString('es-CL') 
             : 'N/A';
-          const movs = a.movimientos.map((m: any) => 
+          const movs = a.movimientos.map((m: MovimientoContable) => 
             `  * [${m.cuenta_codigo}] ${m.cuenta_nombre}: Debe ${fmt(m.debe)} | Haber ${fmt(m.haber)}`
           ).join('\n');
           return `- **Asiento ${a.tipo.toUpperCase()} N° ${a.numero_asiento || ''} (${dateStr})**: "${a.glosa}"\n${movs}`;
@@ -123,10 +134,11 @@ Por favor, elabora tu informe estructurado con el siguiente formato Markdown, us
     const text = result.response.text();
 
     return NextResponse.json({ diagnostico: text });
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Error interno del servidor al procesar la consulta financiera';
     console.error('Error en API de contabilidad:', error);
     return NextResponse.json(
-      { error: error.message || 'Error interno del servidor al procesar la consulta financiera' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

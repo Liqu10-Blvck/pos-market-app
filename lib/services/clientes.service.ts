@@ -108,7 +108,7 @@ export class ClientesService {
         metadataContabilidadRef,
         ultimoNumeroAsiento,
         `Abono de deuda - Cliente: ${cliente.nombre}`,
-        'pago' as any,
+        'pago',
         movimientos,
         clienteId
       );

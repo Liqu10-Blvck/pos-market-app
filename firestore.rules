@@ -92,8 +92,14 @@ service cloud.firestore {
     // Usuarios: Read for self or admin
     match /usuarios/{usuarioId} {
       allow read: if isAuthenticated() && (request.auth.uid == usuarioId || isAdmin());
-      // Allows new sign up to create their own record on registration, or admin to create accounts
-      allow create: if isAuthenticated() && (request.auth.uid == usuarioId || isAdmin());
+      // Allows new sign up to create their own record on registration (limited to inactive cashier), or admin to create accounts, or owner as active admin
+      allow create: if isAuthenticated() && (
+        isAdmin() || 
+        (request.auth.uid == usuarioId && (
+          (request.resource.data.role == 'cashier' && request.resource.data.activo == false) ||
+          (request.auth.token.email == 'nicolasmacortesgallardo@gmail.com' && request.resource.data.role == 'admin' && request.resource.data.activo == true)
+        ))
+      );
       // Allows self-update (excluding role/active fields) or total update by admin
       allow update: if isAuthenticated() && (
         isAdmin() || 
@@ -122,9 +128,16 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Pedidos: Read and write for active users (cajeros and admins)
+    // Pedidos: Read and write validation for active users
     match /pedidos/{pedidoId} {
-      allow read, write: if isActive();
+      allow read: if isActive();
+      allow create: if isActive() &&
+        request.resource.data.keys().hasAll(['items', 'total', 'estado', 'estado_pago', 'fecha']) &&
+        request.resource.data.total >= 0 &&
+        request.resource.data.items.size() > 0;
+      allow update: if isActive() &&
+        request.resource.data.total >= 0;
+      allow delete: if isAdmin();
     }
 
     // Registro Precios Mayoristas: Read for active users, create only for admin, update/delete disabled

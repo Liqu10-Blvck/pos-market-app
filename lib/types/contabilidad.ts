@@ -21,7 +21,7 @@ export interface AsientoContable {
   numero_asiento: number;
   fecha: Timestamp;
   glosa: string;
-  tipo: 'venta' | 'compra' | 'gasto' | 'ajuste' | 'manual';
+  tipo: 'venta' | 'compra' | 'gasto' | 'ajuste' | 'manual' | 'pago';
   referencia_id?: string; // ID of the sale or purchase invoice
   movimientos: MovimientoContable[];
   createdAt: Timestamp;
@@ -50,4 +50,37 @@ export interface FacturaCompra {
   }[];
   imagen_factura_url?: string;
   createdAt: Timestamp;
+}
+
+export interface LibroMayorData {
+  cuenta: CuentaContable;
+  movimientos: {
+    fecha: Timestamp;
+    glosa: string;
+    asiento_numero: number;
+    debe: number;
+    haber: number;
+    saldo: number;
+  }[];
+  saldoFinal: number;
+}
+
+export interface ContabilidadKPIs {
+  caja: number;
+  banco: number;
+  mercaderias: number;
+  clientes: number;
+  ivaCredito: number;
+  ivaDebito: number;
+  proveedores: number;
+  capitalInicial: number;
+  utilidadesAcumuladas: number;
+  ventas: number;
+  costoVentas: number;
+  gastosGenerales: number;
+  activosTotales: number;
+  pasivosTotales: number;
+  utilidadBruta: number;
+  utilidadNeta: number;
+  ivaNeto: number;
 }

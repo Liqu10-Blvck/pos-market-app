@@ -3,6 +3,8 @@ import { Cliente, Venta } from '../../../lib/types/pos';
 import { ClientesService } from '../../../lib/services/clientes.service';
 import { formatCLPCurrency, normalizeMoneyInput, parseChileanMoneyInput } from '../../../lib/utils';
 
+type ToastFn = (options: { title?: string; description?: string; variant?: 'default' | 'destructive' }) => void;
+
 interface ClientesFormData {
   nombre: string;
   telefono: string;
@@ -39,19 +41,19 @@ interface ClientesState {
   setModalOpen: (open: boolean) => void;
   setFormData: (fields: Partial<ClientesFormData>) => void;
   handleAbrirModal: (cliente?: Cliente) => void;
-  handleGuardar: (toast: any) => Promise<boolean>;
+  handleGuardar: (toast: ToastFn) => Promise<boolean>;
 
   // Abonos Actions
   setAbonoModalOpen: (open: boolean) => void;
   setAbonoMonto: (monto: string) => void;
   setAbonoMetodo: (metodo: 'efectivo' | 'transferencia') => void;
   handleAbrirAbono: (cliente: Cliente) => void;
-  handleGuardarAbono: (toast: any) => Promise<boolean>;
+  handleGuardarAbono: (toast: ToastFn) => Promise<boolean>;
 
   // Detalle & IA Actions
   setDetalleModalOpen: (open: boolean) => void;
-  handleAbrirDetalle: (cliente: Cliente, toast: any) => Promise<void>;
-  generarOfertaIA: (toast: any) => Promise<void>;
+  handleAbrirDetalle: (cliente: Cliente, toast: ToastFn) => Promise<void>;
+  generarOfertaIA: (toast: ToastFn) => Promise<void>;
 }
 
 const initialFormData = (): ClientesFormData => ({
@@ -164,11 +166,12 @@ export const useClientesStore = create<ClientesState>((set, get) => ({
 
       set({ modalOpen: false });
       return true;
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error al guardar cliente:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al guardar.';
       toast({
         title: 'Error',
-        description: error.message || 'Error desconocido al guardar.',
+        description: errorMessage,
         variant: 'destructive',
       });
       return false;
@@ -209,11 +212,12 @@ export const useClientesStore = create<ClientesState>((set, get) => ({
       });
       set({ abonoModalOpen: false });
       return true;
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error al registrar abono:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al registrar el abono.';
       toast({
         title: 'Error al registrar abono',
-        description: error.message || 'Error desconocido al registrar el abono.',
+        description: errorMessage,
         variant: 'destructive',
       });
       return false;
@@ -235,7 +239,7 @@ export const useClientesStore = create<ClientesState>((set, get) => ({
       const { VentasService } = await import('../../../lib/services/ventas.service');
       const ventas = await VentasService.obtenerVentasPorCliente(cliente.id);
       set({ detalleVentas: ventas });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error al cargar ventas del cliente:', error);
       toast({
         title: 'Error al cargar historial',
@@ -267,11 +271,12 @@ export const useClientesStore = create<ClientesState>((set, get) => ({
       if (!res.ok) throw new Error(data.error || 'Error al conectar con el servidor.');
 
       set({ recomendacionIA: data.recommendation });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error al generar oferta IA:', error);
+      const errorMessage = error instanceof Error ? error.message : 'No se pudo generar la recomendación en este momento.';
       toast({
         title: 'Error de IA',
-        description: error.message || 'No se pudo generar la recomendación en este momento.',
+        description: errorMessage,
         variant: 'destructive'
       });
     } finally {

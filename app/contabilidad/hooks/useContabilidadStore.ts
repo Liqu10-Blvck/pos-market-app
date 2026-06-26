@@ -4,14 +4,16 @@ import { db, auth } from '@/lib/firebase';
 import { format } from 'date-fns';
 import { uploadImage } from '@/lib/firebase/storage';
 import { ContabilidadService } from '@/lib/services/contabilidad.service';
-import { GastosProgramadosService } from '@/lib/services/gastos-programados.service';
-import { MetasService } from '@/lib/services/metas.service';
-import { DistribucionService } from '@/lib/services/distribucion.service';
+import { GastosProgramadosService, GastoProgramado } from '@/lib/services/gastos-programados.service';
+import { MetasService, MetaFinanciera } from '@/lib/services/metas.service';
+import { DistribucionService, LogDistribucion } from '@/lib/services/distribucion.service';
 import { AIService } from '@/lib/services/ai.service';
-import { CuentaContable, AsientoContable, FacturaCompra, TipoDocumentoCompra, MovimientoContable } from '@/lib/types/contabilidad';
-import { Producto, ConsultaIALog, Venta } from '@/lib/types/pos';
+import { CuentaContable, AsientoContable, FacturaCompra, TipoDocumentoCompra, MovimientoContable, LibroMayorData, ContabilidadKPIs } from '@/lib/types/contabilidad';
+import { Producto, ConsultaIALog, Venta, User } from '@/lib/types/pos';
 import { parseChileanMoneyInput } from '@/lib/utils';
 import { LocalImage } from '@/app/admin/hooks/useAdminStore';
+
+type ToastFn = (options: { title?: string; description?: string; variant?: 'default' | 'destructive' | 'success' }) => void;
 
 export interface RowProductoFactura {
   producto_id: string;
@@ -32,15 +34,15 @@ interface ContabilidadState {
 
   // Ledger
   selectedCuentaCodigo: string;
-  ledgerData: any;
+  ledgerData: LibroMayorData | null;
 
   // Expenses Tab Form
   gastoGlosa: string;
   gastoMonto: string;
   gastoMetodo: 'efectivo' | 'transferencia';
-  gastosProgramados: any[];
-  metasFinancieras: any[];
-  historialDistribucion: any[];
+  gastosProgramados: GastoProgramado[];
+  metasFinancieras: MetaFinanciera[];
+  historialDistribucion: LogDistribucion[];
   fondosAsignados: { caja: number; banco: number };
   tipoGastoRegistro: 'directo' | 'programado';
   progConcepto: string;
@@ -100,7 +102,7 @@ interface ContabilidadState {
   flujoFechaInicio: string;
   flujoFechaFin: string;
   cargandoFlujo: boolean;
-  flujoVentas: any[];
+  flujoVentas: Venta[];
 
   // Basic Setters
   setActiveTab: (activeTab: string) => void;
@@ -155,25 +157,25 @@ interface ContabilidadState {
   setFlujoFechaFin: (flujoFechaFin: string) => void;
 
   // Load functions
-  cargarDatosContables: (toast: any) => Promise<void>;
+  cargarDatosContables: (toast: ToastFn) => Promise<void>;
   cargarLibroMayor: (codigo: string) => Promise<void>;
-  cargarFlujoVentas: (toast: any) => Promise<void>;
+  cargarFlujoVentas: (toast: ToastFn) => Promise<void>;
   cargarHistorialIA: () => Promise<void>;
 
   // Submits
-  handleGastoSubmit: (e: React.FormEvent, toast: any) => Promise<void>;
-  handleProgramarGastoSubmit: (e: React.FormEvent, toast: any) => Promise<void>;
-  handleMetaAhorroSubmit: (e: React.FormEvent, toast: any) => Promise<void>;
-  handleDistribuirFondosSubmit: (e: React.FormEvent, contabilidadKPIs: any, user: any, toast: any) => Promise<void>;
-  handlePagarGastoProgramado: (id: string, metodo: 'efectivo' | 'transferencia', toast: any) => Promise<void>;
-  handleEliminarGastoProgramado: (id: string, toast: any) => Promise<void>;
-  handleEliminarMeta: (id: string, toast: any) => Promise<void>;
-  handleCapitalSubmit: (e: React.FormEvent, toast: any) => Promise<void>;
-  handleAddProductToFactura: (toast: any) => void;
+  handleGastoSubmit: (e: React.FormEvent, toast: ToastFn) => Promise<void>;
+  handleProgramarGastoSubmit: (e: React.FormEvent, toast: ToastFn) => Promise<void>;
+  handleMetaAhorroSubmit: (e: React.FormEvent, toast: ToastFn) => Promise<void>;
+  handleDistribuirFondosSubmit: (e: React.FormEvent, contabilidadKPIs: ContabilidadKPIs, user: User | null, toast: ToastFn) => Promise<void>;
+  handlePagarGastoProgramado: (id: string, metodo: 'efectivo' | 'transferencia', toast: ToastFn) => Promise<void>;
+  handleEliminarGastoProgramado: (id: string, toast: ToastFn) => Promise<void>;
+  handleEliminarMeta: (id: string, toast: ToastFn) => Promise<void>;
+  handleCapitalSubmit: (e: React.FormEvent, toast: ToastFn) => Promise<void>;
+  handleAddProductToFactura: (toast: ToastFn) => void;
   handleRemoveProductFromFactura: (id: string) => void;
-  handleFacturaSubmit: (e: React.FormEvent, sumNeto: number, sumIva: number, sumTotal: number, toast: any) => Promise<void>;
-  handleEnviarMensajeIA: (e: React.FormEvent, kpis: any, asientos: any[], toast: any) => Promise<void>;
-  handleSubirImagenDetalle: (file: File, toast: any) => Promise<void>;
+  handleFacturaSubmit: (e: React.FormEvent, sumNeto: number, sumIva: number, sumTotal: number, toast: ToastFn) => Promise<void>;
+  handleEnviarMensajeIA: (e: React.FormEvent, kpis: ContabilidadKPIs, asientos: AsientoContable[], toast: ToastFn) => Promise<void>;
+  handleSubirImagenDetalle: (file: File, toast: ToastFn) => Promise<void>;
 }
 
 export const useContabilidadStore = create<ContabilidadState>((set, get) => ({
@@ -432,11 +434,12 @@ export const useContabilidadStore = create<ContabilidadState>((set, get) => ({
 
       set({ gastoGlosa: '', gastoMonto: '' });
       await get().cargarDatosContables(toast);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
+      const errorMessage = err instanceof Error ? err.message : 'No se pudo guardar el gasto contable.';
       toast({
         title: 'Error de registro',
-        description: err.message || 'No se pudo guardar el gasto contable.',
+        description: errorMessage,
         variant: 'destructive'
       });
       set({ cargando: false });
@@ -480,11 +483,12 @@ export const useContabilidadStore = create<ContabilidadState>((set, get) => ({
 
       set({ progConcepto: '', progMonto: '' });
       await get().cargarDatosContables(toast);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
+      const errorMessage = err instanceof Error ? err.message : 'No se pudo programar el gasto.';
       toast({
         title: 'Error de registro',
-        description: err.message || 'No se pudo programar el gasto.',
+        description: errorMessage,
         variant: 'destructive'
       });
       set({ cargando: false });
@@ -525,11 +529,12 @@ export const useContabilidadStore = create<ContabilidadState>((set, get) => ({
 
       set({ metaAhorroNombre: '', metaAhorroMonto: '', metaAhorroFecha: '' });
       await get().cargarDatosContables(toast);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
+      const errorMessage = err instanceof Error ? err.message : 'No se pudo registrar la meta.';
       toast({
         title: 'Error al crear meta',
-        description: err.message || 'No se pudo registrar la meta.',
+        description: errorMessage,
         variant: 'destructive'
       });
       set({ cargando: false });
@@ -598,11 +603,12 @@ export const useContabilidadStore = create<ContabilidadState>((set, get) => ({
 
       set({ distribucionOpen: false, distribucionMonto: '', ejecutandoDistribucion: false });
       await get().cargarDatosContables(toast);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
+      const errorMessage = err instanceof Error ? err.message : 'No se pudo realizar la distribución virtual.';
       toast({
         title: 'Error de distribución',
-        description: err.message || 'No se pudo realizar la distribución virtual.',
+        description: errorMessage,
         variant: 'destructive'
       });
       set({ ejecutandoDistribucion: false });
@@ -619,11 +625,12 @@ export const useContabilidadStore = create<ContabilidadState>((set, get) => ({
         variant: 'success'
       });
       await get().cargarDatosContables(toast);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
+      const errorMessage = err instanceof Error ? err.message : 'No se pudo procesar el pago del gasto.';
       toast({
         title: 'Error al pagar',
-        description: err.message || 'No se pudo procesar el pago del gasto.',
+        description: errorMessage,
         variant: 'destructive'
       });
       set({ cargando: false });
@@ -639,11 +646,12 @@ export const useContabilidadStore = create<ContabilidadState>((set, get) => ({
         description: 'Se eliminó el gasto programado.'
       });
       await get().cargarDatosContables(toast);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
+      const errorMessage = err instanceof Error ? err.message : 'No se pudo eliminar el registro.';
       toast({
         title: 'Error al eliminar',
-        description: err.message || 'No se pudo eliminar el registro.',
+        description: errorMessage,
         variant: 'destructive'
       });
       set({ cargando: false });
@@ -659,11 +667,12 @@ export const useContabilidadStore = create<ContabilidadState>((set, get) => ({
         description: 'Se eliminó la meta de ahorro.'
       });
       await get().cargarDatosContables(toast);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
+      const errorMessage = err instanceof Error ? err.message : 'No se pudo eliminar la meta.';
       toast({
         title: 'Error al eliminar',
-        description: err.message || 'No se pudo eliminar la meta.',
+        description: errorMessage,
         variant: 'destructive'
       });
       set({ cargando: false });
@@ -761,11 +770,12 @@ export const useContabilidadStore = create<ContabilidadState>((set, get) => ({
         guardandoCapital: false
       });
       await get().cargarDatosContables(toast);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
+      const errorMessage = err instanceof Error ? err.message : 'No se pudo guardar el aporte.';
       toast({
         title: 'Error al registrar',
-        description: err.message || 'No se pudo guardar el aporte.',
+        description: errorMessage,
         variant: 'destructive'
       });
       set({ guardandoCapital: false });
@@ -904,11 +914,12 @@ export const useContabilidadStore = create<ContabilidadState>((set, get) => ({
       });
 
       await get().cargarDatosContables(toast);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
+      const errorMessage = err instanceof Error ? err.message : 'No se pudo guardar la factura de compra.';
       toast({
         title: 'Error de transacción',
-        description: err.message || 'No se pudo guardar la factura de compra.',
+        description: errorMessage,
         variant: 'destructive'
       });
       set({ guardandoFactura: false, cargando: false });
@@ -958,14 +969,14 @@ export const useContabilidadStore = create<ContabilidadState>((set, get) => ({
         title: 'Análisis contable listo',
         description: 'Gemini ha procesado tu consulta financiera.'
       });
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
+      const errorMessage = err instanceof Error ? err.message : 'No se pudo obtener la respuesta del asistente.';
       toast({
         title: 'Error de IA',
-        description: err.message || 'No se pudo obtener la respuesta del asistente.',
+        description: errorMessage,
         variant: 'destructive'
       });
-    } finally {
       set({ aiCargando: false });
     }
   },

@@ -7,11 +7,13 @@ import {
   getDocs, 
   orderBy, 
   runTransaction,
-  writeBatch
+  writeBatch,
+  Transaction,
+  DocumentReference
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { CuentaContable, AsientoContable, FacturaCompra, MovimientoContable, TipoDocumentoCompra } from '../types/contabilidad';
-import { Producto } from '../types/pos';
+import { Producto, ItemVenta } from '../types/pos';
 
 export class ContabilidadService {
   private static readonly COLLECTION_CUENTAS = 'cuentas';
@@ -78,8 +80,8 @@ export class ContabilidadService {
    * NOTE: Any read of metadata must be done prior to this call in the parent transaction.
    */
   static registrarAsientoEnTransaccion(
-    transaction: any,
-    metadataRef: any,
+    transaction: Transaction,
+    metadataRef: DocumentReference,
     ultimoAsiento: number,
     glosa: string,
     tipo: AsientoContable['tipo'],
@@ -196,7 +198,7 @@ export class ContabilidadService {
         const nuevoStock = (producto.stock_actual || 0) + p.cantidad;
 
         // Update product in DB
-        const updateData: any = {
+        const updateData: Partial<Producto> = {
           stock_actual: nuevoStock,
           costo_actual: p.costo_unitario,
           updatedAt: Timestamp.now()
@@ -207,7 +209,7 @@ export class ContabilidadService {
           updateData.activo = true;
         }
         if (p.precio_venta !== undefined) updateData.precio = p.precio_venta;
-        if (p.precio_caja !== undefined) updateData.precio_caja = p.precio_caja;
+        if (p.precio_caja !== undefined) updateData.precio_caja = p.precio_caja ?? undefined;
         if (p.margen_deseado !== undefined) updateData.margen_deseado = p.margen_deseado;
         if (p.cantidad_por_caja !== undefined) updateData.cantidad_por_caja = p.cantidad_por_caja;
         if (data.imagenFacturaUrl) updateData.imagen_factura_url = data.imagenFacturaUrl;
@@ -386,7 +388,16 @@ export class ContabilidadService {
     const snapshot = await getDocs(q);
     const asientos = snapshot.docs.map(doc => doc.data() as AsientoContable);
 
-    const movimientos: any[] = [];
+    interface MovimientoLibroMayor {
+      fecha: Timestamp;
+      glosa: string;
+      asiento_numero: number;
+      debe: number;
+      haber: number;
+      saldo: number;
+    }
+
+    const movimientos: MovimientoLibroMayor[] = [];
     let runningBalance = 0;
 
     asientos.forEach(asiento => {
@@ -454,7 +465,7 @@ export class ContabilidadService {
       snap.docs.forEach(docSnap => {
         const venta = docSnap.data();
         if (venta.items && Array.isArray(venta.items)) {
-          venta.items.forEach((item: any) => {
+          venta.items.forEach((item: ItemVenta) => {
             const pid = item.producto_id;
             const qty = item.neto || 0;
             const multiplicador = item.es_caja && item.cantidad_por_caja ? item.cantidad_por_caja : 1;

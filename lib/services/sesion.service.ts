@@ -10,7 +10,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { SesionCaja } from '../types/pos';
+import { SesionCaja, ResumenSesion, DatosFinalesCierre } from '../types/pos';
 import { VentasService } from './ventas.service';
 
 export class SesionService {
@@ -129,8 +129,8 @@ export class SesionService {
   private static async enviarResumenEmail(
     sesionId: string,
     emailDestino: string,
-    resumen: any,
-    datosFinales: any
+    resumen: ResumenSesion,
+    datosFinales: DatosFinalesCierre
   ): Promise<void> {
     console.log('Enviando resumen de cierre de caja:', {
       sesionId,

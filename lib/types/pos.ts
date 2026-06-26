@@ -127,3 +127,34 @@ export interface RegistroPrecioMayorista {
   precio_venta_local: number;
   precio_referencia: number;
 }
+
+export interface ProductAnalysisResponse {
+  nombre: string;
+  sku: string | null;
+  fecha_caducidad: string | null;
+  tiene_vencimiento: boolean;
+  tipo_empaque: 'Caja' | 'Saco' | 'Malla' | 'Bandeja' | 'Paquete' | null;
+  cantidad_por_caja: number | null;
+  costo_caja: number | null;
+  costo_unitario: number | null;
+  precio_sugerido_unidad: number | null;
+}
+
+export interface ResumenSesion {
+  total_ventas: number;
+  total_efectivo: number;
+  total_transferencia: number;
+  total_tarjeta: number;
+  total_fiado: number;
+  cantidad_ventas: number;
+  ventas_detalle: Venta[];
+}
+
+export interface DatosFinalesCierre {
+  monto_inicial: number;
+  monto_final_esperado: number;
+  monto_final_real: number;
+  diferencia: number;
+}
+
+

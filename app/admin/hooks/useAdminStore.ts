@@ -362,7 +362,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
         
         if (data.costo_unitario) {
           next.costo = data.costo_unitario.toString();
-          const costoNum = parseFloat(data.costo_unitario) || 0;
+          const costoNum = data.costo_unitario || 0;
           const margenNum = parseFloat(next.margen) || 0;
           const precioSugerido = roundToChileanDecena(Math.round(costoNum * (1 + margenNum / 100)));
           next.precio = precioSugerido > 0 ? formatCLPCurrency(precioSugerido) : '';
@@ -379,12 +379,12 @@ export const useAdminStore = create<AdminState>((set, get) => ({
         }
         
         if (data.costo_caja) {
-          const costCaja = parseFloat(data.costo_caja) || 0;
+          const costCaja = data.costo_caja || 0;
           const margenNum = parseFloat(next.margen) || 30;
           const precioCajaSugerido = roundToChileanDecena(Math.round(costCaja * (1 + margenNum / 100)));
           next.precio_caja = precioCajaSugerido > 0 ? formatCLPCurrency(precioCajaSugerido) : '';
         } else if (data.costo_unitario && data.cantidad_por_caja) {
-          const calculatedCostoCaja = (parseFloat(data.costo_unitario) || 0) * (parseFloat(data.cantidad_por_caja) || 0);
+          const calculatedCostoCaja = (data.costo_unitario || 0) * (data.cantidad_por_caja || 0);
           const margenNum = parseFloat(next.margen) || 30;
           const precioCajaSugerido = roundToChileanDecena(Math.round(calculatedCostoCaja * (1 + margenNum / 100)));
           next.precio_caja = precioCajaSugerido > 0 ? formatCLPCurrency(precioCajaSugerido) : '';

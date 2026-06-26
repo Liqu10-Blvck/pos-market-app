@@ -5,7 +5,8 @@ import {
   getDoc,
   updateDoc, 
   query, 
-  orderBy 
+  orderBy,
+  Timestamp
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { User } from '../types/pos';
@@ -16,7 +17,7 @@ export interface UserDB {
   email: string;
   role: 'admin' | 'cashier';
   activo: boolean;
-  createdAt: any;
+  createdAt: Timestamp;
 }
 
 export class UsuariosService {

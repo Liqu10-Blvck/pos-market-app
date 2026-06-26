@@ -1,55 +1,70 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { Producto, CarritoItem, ItemVenta, MetodoPago, Cliente } from '@/lib/types/pos';
-import { VentasService } from '@/lib/services/ventas.service';
-import { SesionService } from '@/lib/services/sesion.service';
+import { useEffect } from 'react';
+import { useAppStore } from '@/lib/store/useAppStore';
+import { useVentasStore } from './hooks/useVentasStore';
+import { filtrarProductosVentas } from './utils/ventasUtils';
+
 import { ProductCardBento } from '@/components/pos/product-card-bento';
 import { WeightModal } from '@/components/pos/weight-modal';
 import { Cart } from '@/components/pos/cart';
 import { PaymentDrawer } from '@/components/pos/payment-drawer';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { useToast } from '@/hooks/use-toast';
-import { AppNav } from '@/components/layout/app-nav';
-import { formatCLPCurrency } from '@/lib/utils';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, DollarSign, Search, Wifi, WifiOff, Package, ScanBarcode } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { ProtectedRoute } from '@/components/layout/protected-route';
 import { BarcodeScannerModal } from '@/components/pos/barcode-scanner-modal';
 
+import { AppNav } from '@/components/layout/app-nav';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { ProtectedRoute } from '@/components/layout/protected-route';
+import { useToast } from '@/hooks/use-toast';
+import { formatCLPCurrency } from '@/lib/utils';
+import { ShoppingCart, DollarSign, Search, Package, ScanBarcode } from 'lucide-react';
+
 function VentasPage() {
-  const [productos, setProductos] = useState<Producto[]>([]);
-  const [carrito, setCarrito] = useState<CarritoItem[]>([]);
-  const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
-  const [modalPesajeOpen, setModalPesajeOpen] = useState(false);
-  const [modalPagoOpen, setModalPagoOpen] = useState(false);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [sesionActiva, setSesionActiva] = useState<string | null>(null);
-  const [procesando, setProcesando] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [productosFiltrados, setProductosFiltrados] = useState<Producto[]>([]);
-  const [isOnline, setIsOnline] = useState(true);
-  const [modalScannerOpen, setModalScannerOpen] = useState(false);
   const { toast } = useToast();
 
+  // Global App Store cache
+  const productos = useAppStore((state) => state.productos);
+  const clientes = useAppStore((state) => state.clientes);
+  const iniciarProductosListener = useAppStore((state) => state.iniciarProductosListener);
+  const iniciarClientesListener = useAppStore((state) => state.iniciarClientesListener);
+
+  // Local Ventas Store
+  const carrito = useVentasStore((state) => state.carrito);
+  const productoSeleccionado = useVentasStore((state) => state.productoSeleccionado);
+  const modalPesajeOpen = useVentasStore((state) => state.modalPesajeOpen);
+  const modalPagoOpen = useVentasStore((state) => state.modalPagoOpen);
+  const sesionActiva = useVentasStore((state) => state.sesionActiva);
+  const procesando = useVentasStore((state) => state.procesando);
+  const searchQuery = useVentasStore((state) => state.searchQuery);
+  const isOnline = useVentasStore((state) => state.isOnline);
+  const modalScannerOpen = useVentasStore((state) => state.modalScannerOpen);
+
+  const setModalPesajeOpen = useVentasStore((state) => state.setModalPesajeOpen);
+  const setModalPagoOpen = useVentasStore((state) => state.setModalPagoOpen);
+  const setSearchQuery = useVentasStore((state) => state.setSearchQuery);
+  const setIsOnline = useVentasStore((state) => state.setIsOnline);
+  const setModalScannerOpen = useVentasStore((state) => state.setModalScannerOpen);
+
+  // Store actions
+  const verificarSesionActiva = useVentasStore((state) => state.verificarSesionActiva);
+  const handleProductDetected = useVentasStore((state) => state.handleProductDetected);
+  const handleAgregarAlCarrito = useVentasStore((state) => state.handleAgregarAlCarrito);
+  const handleEliminarItem = useVentasStore((state) => state.handleEliminarItem);
+  const handleProcesarVenta = useVentasStore((state) => state.handleProcesarVenta);
+
+  // Filter master list for active non-interest items
+  const productosActivos = productos.filter(p => p.activo !== false && p.es_interes !== true);
+  const clientesActivos = clientes.filter(c => c.activo !== false);
+
+  // Apply search query filtering
+  const productosFiltrados = filtrarProductosVentas(productosActivos, searchQuery);
+
+  // Connect listeners and check cash session
   useEffect(() => {
-    const unsubProductos = onSnapshot(collection(db, 'productos'), (snapshot) => {
-      const productosData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Producto[];
-      const activos = productosData.filter((producto) => producto.activo !== false && producto.es_interes !== true);
-      setProductos(activos);
-      setProductosFiltrados(activos);
-    });
-
-    const unsubClientes = onSnapshot(collection(db, 'clientes'), (snapshot) => {
-      const clientesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Cliente[];
-      setClientes(clientesData.filter((cliente) => cliente.activo !== false));
-    });
-
-    verificarSesionActiva();
+    const unsubProductos = iniciarProductosListener();
+    const unsubClientes = iniciarClientesListener();
+    verificarSesionActiva(toast);
 
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -62,53 +77,7 @@ function VentasPage() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
-
-  useEffect(() => {
-    const query = searchQuery.toLowerCase().trim();
-    if (query === '') {
-      setProductosFiltrados(productos);
-      return;
-    }
-    setProductosFiltrados(
-      productos.filter((producto) =>
-        producto.nombre.toLowerCase().includes(query) ||
-        (producto.sku && producto.sku.toLowerCase().includes(query))
-      )
-    );
-  }, [productos, searchQuery]);
-
-  const verificarSesionActiva = async () => {
-    try {
-      const sesion = await SesionService.obtenerSesionActiva();
-      if (sesion) {
-        setSesionActiva(sesion.id);
-      } else {
-        toast({
-          title: 'No hay sesión activa',
-          description: 'Abre sesión para vender',
-          variant: 'destructive'
-        });
-      }
-    } catch (error) {
-           console.error('Error al verificar sesión:', error);
-    }
-  };
-
-  const handleProductDetected = (producto: Producto) => {
-    if (producto.stock_actual <= 0) {
-      toast({
-        title: 'Sin stock',
-        description: `El producto ${producto.nombre} no tiene stock disponible para la venta.`,
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    // Always open the Weight/Quantity modal so the cashier can set the amount
-    setProductoSeleccionado(producto);
-    setModalPesajeOpen(true);
-  };
+  }, [iniciarProductosListener, iniciarClientesListener, verificarSesionActiva, setIsOnline, toast]);
 
   // Global barcode listener for physical gun scanners
   useEffect(() => {
@@ -126,11 +95,11 @@ function VentasPage() {
 
       if (e.key === 'Enter') {
         if (buffer.length >= 3) {
-          const matched = productos.find(p => p.sku && p.sku.trim() === buffer.trim());
+          const matched = productosActivos.find(p => p.sku && p.sku.trim() === buffer.trim());
           if (matched) {
             e.preventDefault();
             e.stopPropagation();
-            handleProductDetected(matched);
+            handleProductDetected(matched, toast);
             if (activeEl && activeEl instanceof HTMLInputElement) {
               activeEl.value = '';
             }
@@ -147,75 +116,16 @@ function VentasPage() {
     return () => {
       window.removeEventListener('keydown', handleGlobalKeyDown);
     };
-  }, [productos]);
+  }, [productosActivos, handleProductDetected, setSearchQuery, toast]);
 
-  const handleSeleccionarProducto = (producto: Producto) => {
+  const handleSeleccionarProducto = (producto: any) => {
     if (producto.stock_actual <= 0) return;
-    setProductoSeleccionado(producto);
-    setModalPesajeOpen(true);
-  };
-
-  const handleAgregarAlCarrito = (itemToScan: ItemVenta) => {
-    setCarrito(prev => {
-      const existing = prev.find(i => 
-        i.nombre === itemToScan.nombre && 
-        i.unidad === itemToScan.unidad && 
-        i.precio_unitario === itemToScan.precio_unitario
-      );
-      
-      if (existing) {
-        return prev.map(i => 
-          i.temp_id === existing.temp_id 
-            ? { 
-                ...i, 
-                neto: i.neto + itemToScan.neto, 
-                total: Math.round(i.total + itemToScan.total),
-                peso_bruto: (i.peso_bruto || 0) + (itemToScan.peso_bruto || 0),
-                tara: (i.tara || 0) + (itemToScan.tara || 0),
-                cantidad: (i.cantidad || 0) + (itemToScan.cantidad || 0)
-              } 
-            : i
-        );
-      }
-      
-      return [...prev, { ...itemToScan, temp_id: `${Date.now()}-${Math.random()}` }];
-    });
-    toast({ title: 'Agregado', description: `${itemToScan.nombre} al carrito` });
-  };
-
-  const handleEliminarItem = (tempId: string) => {
-    setCarrito(prev => prev.filter(item => item.temp_id !== tempId));
+    handleProductDetected(producto, toast);
   };
 
   const handleAbrirModalPago = () => {
     if (carrito.length === 0 || !sesionActiva) return;
     setModalPagoOpen(true);
-  };
-
-  const handleProcesarVenta = async (metodoPago: MetodoPago, clienteSeleccionado?: string, pagoCon?: number) => {
-    if (!sesionActiva) return;
-    setProcesando(true);
-    try {
-      const items: ItemVenta[] = carrito.map(({ temp_id, ...item }) => item);
-      await VentasService.procesarVenta(items, metodoPago, sesionActiva, clienteSeleccionado || undefined);
-      
-      const vuelto = (pagoCon && pagoCon > totalCarrito) ? (pagoCon - totalCarrito) : 0;
-      const description = vuelto > 0 
-        ? `Vuelto a entregar: ${formatCLPCurrency(vuelto)}` 
-        : `Pago registrado con ${metodoPago === 'efectivo' ? 'Efectivo' : metodoPago}`;
-
-      toast({ 
-        title: 'Venta exitosa', 
-        description,
-        variant: 'success'
-      });
-      setCarrito([]);
-      setModalPagoOpen(false);
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    } finally {
-      setProcesando(false);
-    }
   };
 
   const totalCarrito = carrito.reduce((sum, item) => sum + item.total, 0);
@@ -260,12 +170,12 @@ function VentasPage() {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && searchQuery.trim() !== '') {
                       const query = searchQuery.trim().toLowerCase();
-                      const matched = productos.find(
+                      const matched = productosActivos.find(
                         p => p.sku && p.sku.trim().toLowerCase() === query
                       );
                       if (matched) {
                         e.preventDefault();
-                        handleProductDetected(matched);
+                        handleProductDetected(matched, toast);
                         setSearchQuery('');
                       }
                     }
@@ -294,7 +204,12 @@ function VentasPage() {
             ) : (
                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 pb-32 lg:pb-8">
                   {productosFiltrados.map((producto, index) => (
-                    <ProductCardBento key={producto.id} producto={producto} onSelect={handleSeleccionarProducto} index={index} />
+                    <ProductCardBento 
+                      key={producto.id} 
+                      producto={producto} 
+                      onSelect={handleSeleccionarProducto} 
+                      index={index} 
+                    />
                   ))}
                </div>
             )}
@@ -344,9 +259,32 @@ function VentasPage() {
           </Button>
       </div>
 
-      <WeightModal producto={productoSeleccionado} open={modalPesajeOpen} onClose={() => setModalPesajeOpen(false)} onAgregar={handleAgregarAlCarrito} />
-      <PaymentDrawer open={modalPagoOpen} onOpenChange={setModalPagoOpen} items={carrito} total={totalCarrito} clientes={clientes} onConfirm={handleProcesarVenta} procesando={procesando} />
-      <BarcodeScannerModal open={modalScannerOpen} onClose={() => setModalScannerOpen(false)} productos={productos} onDetected={handleProductDetected} />
+      {/* Báscula Modal */}
+      <WeightModal 
+        producto={productoSeleccionado} 
+        open={modalPesajeOpen} 
+        onClose={() => setModalPesajeOpen(false)} 
+        onAgregar={(item) => handleAgregarAlCarrito(item, toast)} 
+      />
+      
+      {/* Pasarela Modal Drawer */}
+      <PaymentDrawer 
+        open={modalPagoOpen} 
+        onOpenChange={setModalPagoOpen} 
+        items={carrito} 
+        total={totalCarrito} 
+        clientes={clientesActivos} 
+        onConfirm={(metodo, cliente, pagoCon) => handleProcesarVenta(metodo, cliente, pagoCon, toast)} 
+        procesando={procesando} 
+      />
+
+      {/* Cámara Scanner Modal */}
+      <BarcodeScannerModal 
+        open={modalScannerOpen} 
+        onClose={() => setModalScannerOpen(false)} 
+        productos={productosActivos} 
+        onDetected={(producto) => handleProductDetected(producto, toast)} 
+      />
     </div>
   );
 }

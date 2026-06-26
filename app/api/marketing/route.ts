@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { verifySession } from '@/lib/api-auth';
 
 export async function POST(req: NextRequest) {
   try {
+    const userSession = await verifySession(req);
+    if (!userSession) {
+      return NextResponse.json(
+        { error: 'No autorizado. Debes iniciar sesión con un usuario activo.' },
+        { status: 401 }
+      );
+    }
+
     const { productos, contexto, productoEspecifico, historial } = await req.json();
 
     if (!productos || !Array.isArray(productos)) {

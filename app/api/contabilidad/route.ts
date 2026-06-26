@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { verifySession } from '@/lib/api-auth';
 
 export async function POST(req: NextRequest) {
   try {
+    const userSession = await verifySession(req, 'admin');
+    if (!userSession) {
+      return NextResponse.json(
+        { error: 'No autorizado. Solo los administradores activos pueden consultar asesoría contable.' },
+        { status: 401 }
+      );
+    }
+
     const { kpis, asientos, pregunta, historial } = await req.json();
 
     if (!kpis) {

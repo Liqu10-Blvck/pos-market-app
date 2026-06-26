@@ -223,6 +223,17 @@ export class ContabilidadService {
           fecha: Timestamp.fromDate(data.fecha),
           createdAt: Timestamp.now()
         });
+
+        // Also register in registro_precios_mayoristas to log cost variation
+        const mayoristaLogRef = doc(collection(db, 'registro_precios_mayoristas'));
+        transaction.set(mayoristaLogRef, {
+          fecha: Timestamp.fromDate(data.fecha),
+          producto_id: p.producto_id,
+          nombre: p.nombre,
+          costo_local: p.costo_unitario,
+          precio_venta_local: p.precio_venta !== undefined ? p.precio_venta : (producto.precio || 0),
+          precio_referencia: p.costo_unitario
+        });
       });
 
       // Register the invoice itself

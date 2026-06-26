@@ -1,237 +1,84 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, orderBy, limit, Timestamp, where } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { Venta, SesionCaja, Producto } from '@/lib/types/pos';
+import { useEffect, useMemo } from 'react';
+import { useAppStore } from '@/lib/store/useAppStore';
+import { useHistorialStore } from './hooks/useHistorialStore';
+import { 
+  agruparVentasPorDia, 
+  obtenerProductosTopDelDia, 
+  filtrarProductosAReponer 
+} from './utils/historialUtils';
+
 import { AppNav } from '@/components/layout/app-nav';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { TicketGenerator } from '@/lib/utils/ticket-generator';
-import { formatCLPCurrency } from '@/lib/utils';
-import { 
-  History, Printer, DollarSign, Calendar, TrendingUp, AlertTriangle, 
-  Layers, Search, FileText, ShoppingBag, CreditCard, 
-  ArrowRight, Users, CheckCircle, PackageOpen, HelpCircle
-} from 'lucide-react';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
-import { ProtectedRoute } from '@/components/layout/protected-route';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { ProtectedRoute } from '@/components/layout/protected-route';
 
-interface VentasDia {
-  fechaKey: string; // YYYY-MM-DD
-  fechaDisplay: Date;
-  ventas: Venta[];
-  total: number;
-  efectivo: number;
-  transferencia: number;
-  tarjeta: number;
-  fiado: number;
-  cantidad: number;
-}
+import { formatCLPCurrency } from '@/lib/utils';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { 
+  History, Printer, DollarSign, Calendar, TrendingUp, AlertTriangle, 
+  Search, ShoppingBag, CreditCard, ArrowRight, HelpCircle, 
+  CheckCircle, PackageOpen 
+} from 'lucide-react';
 
 function HistorialPage() {
-  const [ventas, setVentas] = useState<Venta[]>([]);
-  const [sesiones, setSesiones] = useState<SesionCaja[]>([]);
-  const [productos, setProductos] = useState<Producto[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [activeTab, setActiveTab] = useState<'diario' | 'sesiones' | 'reposicion'>('diario');
+  // Global Store cache
+  const productosGlobales = useAppStore((state) => state.productos);
+  const iniciarProductosListener = useAppStore((state) => state.iniciarProductosListener);
 
-  // Date range filters (default to last 30 days)
-  const [fechaInicio, setFechaInicio] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return format(d, 'yyyy-MM-dd');
-  });
-  const [fechaFin, setFechaFin] = useState<string>(() => {
-    return format(new Date(), 'yyyy-MM-dd');
-  });
+  // Local Store states
+  const ventas = useHistorialStore((state) => state.ventas);
+  const sesiones = useHistorialStore((state) => state.sesiones);
+  const cargando = useHistorialStore((state) => state.cargando);
+  const activeTab = useHistorialStore((state) => state.activeTab);
+  const fechaInicio = useHistorialStore((state) => state.fechaInicio);
+  const fechaFin = useHistorialStore((state) => state.fechaFin);
+  const selectedDayKey = useHistorialStore((state) => state.selectedDayKey);
+  const selectedVenta = useHistorialStore((state) => state.selectedVenta);
+  const umbralReposicion = useHistorialStore((state) => state.umbralReposicion);
+  const busquedaReposicion = useHistorialStore((state) => state.busquedaReposicion);
 
-  // Selected states
-  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
-  const [selectedVenta, setSelectedVenta] = useState<Venta | null>(null);
+  // Local Store actions
+  const setActiveTab = useHistorialStore((state) => state.setActiveTab);
+  const setFechaInicio = useHistorialStore((state) => state.setFechaInicio);
+  const setFechaFin = useHistorialStore((state) => state.setFechaFin);
+  const setSelectedDayKey = useHistorialStore((state) => state.setSelectedDayKey);
+  const setSelectedVenta = useHistorialStore((state) => state.setSelectedVenta);
+  const setUmbralReposicion = useHistorialStore((state) => state.setUmbralReposicion);
+  const setBusquedaReposicion = useHistorialStore((state) => state.setBusquedaReposicion);
 
-  // Replenishment states
-  const [umbralReposicion, setUmbralReposicion] = useState<number>(5);
-  const [busquedaReposicion, setBusquedaReposicion] = useState<string>('');
+  const cargarDatos = useHistorialStore((state) => state.cargarDatos);
+  const handleFiltrarRango = useHistorialStore((state) => state.handleFiltrarRango);
+  const handleImprimirTicket = useHistorialStore((state) => state.handleImprimirTicket);
 
+  // Initialize listeners and load historical data
   useEffect(() => {
+    const unsubProductos = iniciarProductosListener();
     cargarDatos();
-  }, []);
+    return () => unsubProductos();
+  }, [iniciarProductosListener, cargarDatos]);
 
-  const cargarDatos = async () => {
-    try {
-      setCargando(true);
+  // Memorized computations using helper utilities
+  const ventasAgrupadasPorDia = useMemo(() => agruparVentasPorDia(ventas), [ventas]);
 
-      // 1. Fetch sessions (last 20)
-      const sesionesQuery = query(
-        collection(db, 'sesiones_caja'),
-        orderBy('fecha_apertura', 'desc'),
-        limit(20)
-      );
-      const sesionesSnapshot = await getDocs(sesionesQuery);
-      const sesionesData = sesionesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as SesionCaja[];
-      setSesiones(sesionesData);
-
-      // 2. Fetch all active products for replenishment analysis
-      const productosSnapshot = await getDocs(collection(db, 'productos'));
-      const productosData = productosSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Producto[];
-      setProductos(productosData);
-
-      // 3. Fetch sales with date range
-      await cargarVentasFiltradas(fechaInicio, fechaFin);
-
-    } catch (error) {
-      console.error('Error al cargar datos contables e historial:', error);
-    } finally {
-      setCargando(false);
-    }
-  };
-
-  const cargarVentasFiltradas = async (ini: string, fin: string) => {
-    try {
-      const start = new Date(ini + 'T00:00:00');
-      const end = new Date(fin + 'T23:59:59');
-
-      const ventasQuery = query(
-        collection(db, 'ventas'),
-        where('fecha', '>=', Timestamp.fromDate(start)),
-        where('fecha', '<=', Timestamp.fromDate(end)),
-        orderBy('fecha', 'desc')
-      );
-      const ventasSnapshot = await getDocs(ventasQuery);
-      const ventasData = ventasSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Venta[];
-
-      setVentas(ventasData);
-
-      // Automatically select the first day if available
-      if (ventasData.length > 0) {
-        const firstSaleDate = ventasData[0].fecha.toDate();
-        const firstDayKey = format(firstSaleDate, 'yyyy-MM-dd');
-        setSelectedDayKey(firstDayKey);
-      } else {
-        setSelectedDayKey(null);
-      }
-      setSelectedVenta(null);
-
-    } catch (err) {
-      console.error("Error al cargar ventas en rango:", err);
-    }
-  };
-
-  const handleFiltrarRango = async () => {
-    setCargando(true);
-    await cargarVentasFiltradas(fechaInicio, fechaFin);
-    setCargando(false);
-  };
-
-  const handleImprimirTicket = (venta: Venta) => {
-    const ticket = TicketGenerator.generar(venta, 'POS MARKET');
-    TicketGenerator.imprimir(ticket);
-  };
-
-  // Group sales by day
-  const ventasAgrupadasPorDia = useMemo((): VentasDia[] => {
-    const grupos: { [key: string]: VentasDia } = {};
-
-    ventas.forEach(venta => {
-      const date = venta.fecha.toDate();
-      const key = format(date, 'yyyy-MM-dd');
-
-      if (!grupos[key]) {
-        grupos[key] = {
-          fechaKey: key,
-          fechaDisplay: date,
-          ventas: [],
-          total: 0,
-          efectivo: 0,
-          transferencia: 0,
-          tarjeta: 0,
-          fiado: 0,
-          cantidad: 0
-        };
-      }
-
-      grupos[key].ventas.push(venta);
-      grupos[key].total += venta.total;
-      grupos[key].cantidad += 1;
-
-      switch (venta.metodo_pago) {
-        case 'efectivo':
-          grupos[key].efectivo += venta.total;
-          break;
-        case 'transferencia':
-          grupos[key].transferencia += venta.total;
-          break;
-        case 'tarjeta':
-          grupos[key].tarjeta += venta.total;
-          break;
-        case 'fiado':
-          grupos[key].fiado += venta.total;
-          break;
-      }
-    });
-
-    return Object.values(grupos).sort((a, b) => b.fechaKey.localeCompare(a.fechaKey));
-  }, [ventas]);
-
-  // Selected day data
-  const selectedDayData = useMemo((): VentasDia | null => {
+  const selectedDayData = useMemo(() => {
     if (!selectedDayKey) return null;
     return ventasAgrupadasPorDia.find(g => g.fechaKey === selectedDayKey) || null;
   }, [selectedDayKey, ventasAgrupadasPorDia]);
 
-  // Top products for selected day
   const topProductsSelectedDay = useMemo(() => {
-    if (!selectedDayData) return [];
-    const counts: { [nombre: string]: { cantidad: number; total: number; unidad: string } } = {};
-
-    selectedDayData.ventas.forEach(venta => {
-      venta.items.forEach(item => {
-        const nombre = item.nombre;
-        if (!counts[nombre]) {
-          counts[nombre] = { cantidad: 0, total: 0, unidad: item.unidad };
-        }
-        counts[nombre].cantidad += item.neto;
-        counts[nombre].total += item.total;
-      });
-    });
-
-    return Object.entries(counts)
-      .map(([nombre, data]) => ({ nombre, ...data }))
-      .sort((a, b) => b.cantidad - a.cantidad)
-      .slice(0, 5);
+    return obtenerProductosTopDelDia(selectedDayData);
   }, [selectedDayData]);
 
-  // Filter products that need replenishment
   const productosAReponer = useMemo(() => {
-    return productos
-      .filter(p => p.activo !== false && p.es_interes !== true)
-      .filter(p => p.stock_actual <= umbralReposicion)
-      .filter(p => {
-        if (!busquedaReposicion.trim()) return true;
-        const term = busquedaReposicion.toLowerCase();
-        return (
-          p.nombre.toLowerCase().includes(term) || 
-          (p.sku && p.sku.toLowerCase().includes(term))
-        );
-      })
-      .sort((a, b) => a.stock_actual - b.stock_actual);
-  }, [productos, umbralReposicion, busquedaReposicion]);
+    return filtrarProductosAReponer(productosGlobales, umbralReposicion, busquedaReposicion);
+  }, [productosGlobales, umbralReposicion, busquedaReposicion]);
 
   if (cargando) {
     return (
@@ -336,7 +183,7 @@ function HistorialPage() {
           {/* TAB 1: VENTAS POR DÍA */}
           {activeTab === 'diario' && (
             ventasAgrupadasPorDia.length === 0 ? (
-              <Card className="border-dashed border-2 py-12 flex flex-col items-center justify-center text-center">
+              <Card className="border-dashed border-2 py-12 flex flex-col items-center justify-center text-center bg-card">
                 <ShoppingBag className="h-12 w-12 text-muted-foreground/40 mb-3" />
                 <CardTitle className="text-base text-muted-foreground">No se encontraron ventas</CardTitle>
                 <p className="text-xs text-muted-foreground/70 max-w-sm mt-1">
@@ -356,10 +203,7 @@ function HistorialPage() {
                         return (
                           <div
                             key={dia.fechaKey}
-                            onClick={() => {
-                              setSelectedDayKey(dia.fechaKey);
-                              setSelectedVenta(null);
-                            }}
+                            onClick={() => setSelectedDayKey(dia.fechaKey)}
                             className={`p-4 rounded-2xl border transition-all cursor-pointer select-none flex flex-col gap-1.5 ${
                               active 
                                 ? 'bg-primary/5 border-primary shadow-sm'
@@ -397,19 +241,19 @@ function HistorialPage() {
                           Estadísticas del {format(selectedDayData.fechaDisplay, "EEEE d 'de' MMMM", { locale: es })}
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          <Card className="bg-gradient-to-br from-card to-muted/20">
+                          <Card className="bg-gradient-to-br from-card to-muted/20 border border-border/40">
                             <CardContent className="pt-6">
                               <p className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Vendido Total</p>
                               <p className="text-2xl font-black mt-1.5 text-foreground">{formatCLPCurrency(selectedDayData.total)}</p>
                             </CardContent>
                           </Card>
-                          <Card className="bg-gradient-to-br from-card to-muted/20">
+                          <Card className="bg-gradient-to-br from-card to-muted/20 border border-border/40">
                             <CardContent className="pt-6">
                               <p className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Transacciones</p>
                               <p className="text-2xl font-black mt-1.5 text-foreground">{selectedDayData.cantidad}</p>
                             </CardContent>
                           </Card>
-                          <Card className="bg-gradient-to-br from-card to-muted/20">
+                          <Card className="bg-gradient-to-br from-card to-muted/20 border border-border/40">
                             <CardContent className="pt-6">
                               <p className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">Ticket Promedio</p>
                               <p className="text-2xl font-black mt-1.5 text-foreground">
@@ -421,7 +265,7 @@ function HistorialPage() {
                       </div>
 
                       {/* Payment Methods */}
-                      <Card className="border border-border/50">
+                      <Card className="border border-border/50 bg-card">
                         <CardHeader className="py-4">
                           <CardTitle className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
                             <CreditCard className="h-4 w-4 text-primary" />
@@ -515,7 +359,7 @@ function HistorialPage() {
                                   Imprimir Ticket
                                 </Button>
                               </div>
-                              <Card className="border border-border/50 h-[380px] flex flex-col justify-between">
+                              <Card className="border border-border/50 h-[380px] flex flex-col justify-between bg-card">
                                 <CardContent className="p-4 overflow-y-auto flex-1">
                                   <div className="space-y-3.5">
                                     <div className="border-b pb-2">
@@ -546,7 +390,7 @@ function HistorialPage() {
                           ) : (
                             <>
                               <h4 className="text-xs font-black uppercase tracking-wider text-muted-foreground">Productos Más Vendidos (Día)</h4>
-                              <Card className="border border-border/50 h-[380px] flex flex-col p-4">
+                              <Card className="border border-border/50 h-[380px] flex flex-col p-4 bg-card">
                                 <ScrollArea className="flex-1 pr-1">
                                   <div className="space-y-3.5">
                                     {topProductsSelectedDay.map((p, idx) => (
@@ -597,7 +441,7 @@ function HistorialPage() {
           {activeTab === 'sesiones' && (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {sesiones.map((sesion) => (
-                <Card key={sesion.id} className="border border-border/50">
+                <Card key={sesion.id} className="border border-border/50 bg-card">
                   <CardHeader className="py-4">
                     <div className="flex items-center justify-between">
                       <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
@@ -674,7 +518,7 @@ function HistorialPage() {
 
           {/* TAB 3: PRODUCTOS A REPONER */}
           {activeTab === 'reposicion' && (
-            <Card className="border border-border/50">
+            <Card className="border border-border/50 bg-card">
               <CardHeader className="py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                   <CardTitle className="text-base font-extrabold uppercase tracking-wider flex items-center gap-2">

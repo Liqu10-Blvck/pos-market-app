@@ -1,244 +1,121 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { AppNav } from '@/components/layout/app-nav'
-import { ProtectedRoute } from '@/components/layout/protected-route'
-import { useAuth } from '@/lib/auth-context'
-import { UsuariosService, UserDB } from '@/lib/services/usuarios.service'
-import { MetasService } from '@/lib/services/metas.service'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { useToast } from '@/hooks/use-toast'
-import { formatCLPCurrency, parseChileanMoneyInput, normalizeMoneyInput } from '@/lib/utils'
+import { useEffect } from 'react';
+import { useAuth } from '@/lib/auth-context';
+import { useConfigStore } from './hooks/useConfigStore';
+
+import { AppNav } from '@/components/layout/app-nav';
+import { ProtectedRoute } from '@/components/layout/protected-route';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { useToast } from '@/hooks/use-toast';
+import { formatCLPCurrency, parseChileanMoneyInput } from '@/lib/utils';
 import { 
   Users, 
   User, 
   Target, 
   UserPlus, 
-  Lock, 
   Shield, 
   Loader2, 
-  Check, 
-  LogOut,
-  Mail,
-  Coins,
-  FileText,
-  Settings
-} from 'lucide-react'
+  Settings,
+  Coins
+} from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 function ConfiguracionPageContent() {
-  const { user, actualizarPerfil } = useAuth()
-  const { toast } = useToast()
+  const { user, actualizarPerfil } = useAuth();
+  const { toast } = useToast();
   
-  // Tab State
-  const isAdmin = user?.role === 'admin'
-  const [tabActiva, setTabActiva] = useState<'perfil' | 'usuarios' | 'metas'>('perfil')
+  const isAdmin = user?.role === 'admin';
+
+  // Read config store values
+  const tabActiva = useConfigStore((state) => state.tabActiva);
+  const nombrePerfil = useConfigStore((state) => state.nombrePerfil);
+  const rolPerfil = useConfigStore((state) => state.rolPerfil);
+  const guardandoPerfil = useConfigStore((state) => state.guardandoPerfil);
+  const usuarios = useConfigStore((state) => state.usuarios);
+  const cargandoUsuarios = useConfigStore((state) => state.cargandoUsuarios);
+  const creandoUsuario = useConfigStore((state) => state.creandoUsuario);
+  const userForm = useConfigStore((state) => state.userForm);
+  const metaDiariaInput = useConfigStore((state) => state.metaDiariaInput);
+  const guardandoMeta = useConfigStore((state) => state.guardandoMeta);
+
+  // Read config store actions
+  const setTabActiva = useConfigStore((state) => state.setTabActiva);
+  const setNombrePerfil = useConfigStore((state) => state.setNombrePerfil);
+  const setRolPerfil = useConfigStore((state) => state.setRolPerfil);
+  const setMetaDiariaInput = useConfigStore((state) => state.setMetaDiariaInput);
+  const setUserForm = useConfigStore((state) => state.setUserForm);
+  const cargarUsuarios = useConfigStore((state) => state.cargarUsuarios);
+  const cargarMetaDiaria = useConfigStore((state) => state.cargarMetaDiaria);
+  
+  const handleActualizarPerfilStore = useConfigStore((state) => state.handleActualizarPerfil);
+  const handleCrearUsuarioStore = useConfigStore((state) => state.handleCrearUsuario);
+  const handleToggleEstadoUsuarioStore = useConfigStore((state) => state.handleToggleEstadoUsuario);
+  const handleGuardarMetaStore = useConfigStore((state) => state.handleGuardarMeta);
 
   // Set default tab on load based on role
   useEffect(() => {
     if (isAdmin) {
-      setTabActiva('usuarios')
+      setTabActiva('usuarios');
     } else {
-      setTabActiva('perfil')
+      setTabActiva('perfil');
     }
-  }, [user, isAdmin])
-
-  // Profile Form State
-  const [nombrePerfil, setNombrePerfil] = useState(user?.name || '')
-  const [rolPerfil, setRolPerfil] = useState(user?.role || 'cashier')
-  const [guardandoPerfil, setGuardandoPerfil] = useState(false)
+  }, [isAdmin, setTabActiva]);
 
   // Sync profile form when user context changes
   useEffect(() => {
     if (user) {
-      setNombrePerfil(user.name || '')
-      setRolPerfil(user.role || 'cashier')
+      setNombrePerfil(user.name || '');
+      setRolPerfil(user.role || 'cashier');
     }
-  }, [user])
-
-  // Users List State
-  const [usuarios, setUsuarios] = useState<UserDB[]>([])
-  const [cargandoUsuarios, setCargandoUsuarios] = useState(false)
-  const [creandoUsuario, setCreandoUsuario] = useState(false)
-  const [userForm, setUserForm] = useState({
-    nombre: '',
-    email: '',
-    password: '',
-    role: 'cashier' as 'admin' | 'cashier'
-  })
-
-  // Goals State
-  const [metaDiariaInput, setMetaDiariaInput] = useState('')
-  const [guardandoMeta, setGuardandoMeta] = useState(false)
+  }, [user, setNombrePerfil, setRolPerfil]);
 
   // Load Data
   useEffect(() => {
     if (isAdmin) {
-      cargarUsuarios()
-      cargarMetaDiaria()
+      cargarUsuarios(toast);
+      cargarMetaDiaria();
     }
-  }, [isAdmin])
+  }, [isAdmin, cargarUsuarios, cargarMetaDiaria, toast]);
 
-  const cargarUsuarios = async () => {
-    setCargandoUsuarios(true)
-    try {
-      const lista = await UsuariosService.listarUsuarios()
-      setUsuarios(lista)
-    } catch (error) {
-      console.error('Error al listar usuarios:', error)
-      toast({
-        title: 'Error',
-        description: 'No se pudieron cargar los colaboradores.',
-        variant: 'destructive'
-      })
-    } finally {
-      setCargandoUsuarios(false)
-    }
-  }
+  // UI Handlers
+  const handleActualizarPerfil = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleActualizarPerfilStore(actualizarPerfil, toast);
+  };
 
-  const cargarMetaDiaria = async () => {
-    try {
-      const meta = await MetasService.obtenerMetaDiaria()
-      setMetaDiariaInput(formatCLPCurrency(meta))
-    } catch (error) {
-      console.error('Error al cargar meta diaria:', error)
-    }
-  }
+  const handleCrearUsuario = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleCrearUsuarioStore(toast);
+  };
 
-  // Actions
-  const handleActualizarPerfil = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!nombrePerfil.trim()) {
-      toast({
-        title: 'Campo requerido',
-        description: 'Por favor, ingresa tu nombre.',
-        variant: 'destructive'
-      })
-      return
-    }
+  const handleToggleEstadoUsuario = (uid: string, activoActual: boolean) => {
+    handleToggleEstadoUsuarioStore(uid, activoActual, toast);
+  };
 
-    setGuardandoPerfil(true)
-    try {
-      await actualizarPerfil(nombrePerfil.trim(), rolPerfil as 'admin' | 'cashier')
-      toast({
-        title: 'Perfil actualizado',
-        description: 'Tus datos han sido actualizados con éxito.',
-        variant: 'success'
-      })
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'No se pudo actualizar tu perfil.',
-        variant: 'destructive'
-      })
-    } finally {
-      setGuardandoPerfil(false)
-    }
-  }
-
-  const handleCrearUsuario = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!userForm.nombre.trim() || !userForm.email.trim() || !userForm.password.trim()) {
-      toast({
-        title: 'Campos incompletos',
-        description: 'Por favor, completa todos los campos del formulario.',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    setCreandoUsuario(true)
-    try {
-      await UsuariosService.crearUsuario({
-        nombre: userForm.nombre.trim(),
-        email: userForm.email.trim(),
-        password: userForm.password.trim(),
-        role: userForm.role
-      })
-
-      toast({
-        title: 'Colaborador registrado',
-        description: `Se ha registrado a ${userForm.nombre} exitosamente.`,
-        variant: 'success'
-      })
-
-      setUserForm({ nombre: '', email: '', password: '', role: 'cashier' })
-      await cargarUsuarios()
-    } catch (error: any) {
-      toast({
-        title: 'Error al registrar',
-        description: error.message || 'No se pudo registrar el nuevo colaborador.',
-        variant: 'destructive'
-      })
-    } finally {
-      setCreandoUsuario(false)
-    }
-  }
-
-  const handleToggleEstadoUsuario = async (uid: string, activoActual: boolean) => {
-    try {
-      await UsuariosService.cambiarEstadoActivo(uid, !activoActual)
-      toast({
-        title: 'Estado actualizado',
-        description: `Colaborador está ahora ${!activoActual ? 'Activo' : 'Inactivo'}.`,
-        variant: 'success'
-      })
-      await cargarUsuarios()
-    } catch (error) {
-      console.error(error)
-      toast({
-        title: 'Error',
-        description: 'No se pudo cambiar el estado del colaborador.',
-        variant: 'destructive'
-      })
-    }
-  }
-
-  const handleGuardarMeta = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const monto = parseChileanMoneyInput(metaDiariaInput)
-    if (monto <= 0) {
-      toast({
-        title: 'Monto inválido',
-        description: 'La meta de ventas debe ser mayor a 0.',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    setGuardandoMeta(true)
-    try {
-      await MetasService.guardarMetaDiaria(monto, user?.id)
-      toast({
-        title: 'Meta guardada',
-        description: `Objetivo diario configurado en ${formatCLPCurrency(monto)}.`,
-        variant: 'success'
-      })
-      setMetaDiariaInput(formatCLPCurrency(monto))
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudo guardar la meta diaria.',
-        variant: 'destructive'
-      })
-    } finally {
-      setGuardandoMeta(false)
-    }
-  }
+  const handleGuardarMeta = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleGuardarMetaStore(user?.id, toast);
+  };
 
   const handleMetaDiariaChange = (val: string) => {
-    // Allow free typing — only strip non-numeric chars (no currency formatting yet)
-    const clean = val.replace(/[^\d.]/g, '')
-    setMetaDiariaInput(clean)
-  }
+    const clean = val.replace(/[^\d.]/g, '');
+    setMetaDiariaInput(clean);
+  };
 
   const handleMetaDiariaBlur = () => {
-    // Format as Chilean currency when the user finishes typing
-    const monto = parseChileanMoneyInput(metaDiariaInput)
-    setMetaDiariaInput(monto > 0 ? formatCLPCurrency(monto) : '')
-  }
+    const monto = parseChileanMoneyInput(metaDiariaInput);
+    setMetaDiariaInput(monto > 0 ? formatCLPCurrency(monto) : '');
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -306,7 +183,7 @@ function ConfiguracionPageContent() {
           {tabActiva === 'usuarios' && isAdmin && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Form card to register new collaborator */}
-              <Card className="border border-border/50 rounded-[2rem] overflow-hidden lg:col-span-1 shadow-sm h-fit">
+              <Card className="border border-border/50 rounded-[2rem] overflow-hidden lg:col-span-1 shadow-sm h-fit bg-card">
                 <CardHeader className="bg-muted/5 border-b border-border/20 px-6 py-5">
                   <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                     <UserPlus className="h-4 w-4 text-indigo-500" />
@@ -324,7 +201,7 @@ function ConfiguracionPageContent() {
                         id="reg_nombre"
                         placeholder="Ej: Carmen Gloria"
                         value={userForm.nombre}
-                        onChange={(e) => setUserForm({ ...userForm, nombre: e.target.value })}
+                        onChange={(e) => setUserForm({ nombre: e.target.value })}
                         className="h-10 rounded-xl text-xs font-bold border-border/70 focus-visible:ring-indigo-500"
                         required
                       />
@@ -337,7 +214,7 @@ function ConfiguracionPageContent() {
                         type="email"
                         placeholder="Ej: carmen@negocio.com"
                         value={userForm.email}
-                        onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                        onChange={(e) => setUserForm({ email: e.target.value })}
                         className="h-10 rounded-xl text-xs font-bold border-border/70 focus-visible:ring-indigo-500"
                         required
                       />
@@ -350,7 +227,7 @@ function ConfiguracionPageContent() {
                         type="password"
                         placeholder="Min. 6 caracteres"
                         value={userForm.password}
-                        onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                        onChange={(e) => setUserForm({ password: e.target.value })}
                         className="h-10 rounded-xl text-xs font-bold border-border/70 focus-visible:ring-indigo-500"
                         required
                       />
@@ -358,15 +235,18 @@ function ConfiguracionPageContent() {
 
                     <div className="space-y-1.5">
                       <Label htmlFor="reg_role" className="text-[10px] font-black uppercase text-muted-foreground">Rol Asignado</Label>
-                      <select
-                        id="reg_role"
-                        value={userForm.role}
-                        onChange={(e) => setUserForm({ ...userForm, role: e.target.value as any })}
-                        className="flex h-10 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold border-border/70 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                      >
-                        <option value="cashier">Cajero (Operación y Ventas únicamente)</option>
-                        <option value="admin">Administrador (Control Total del POS)</option>
-                      </select>
+                      <Select
+                      value={userForm.role}
+                      onValueChange={(val: any) => setUserForm({ role: val })}
+                    >
+                      <SelectTrigger id="reg_role" className="h-10 w-full rounded-xl border border-border bg-background text-xs font-bold border-border/70">
+                        <SelectValue placeholder="Selecciona rol" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cashier">Cajero (Operación y Ventas únicamente)</SelectItem>
+                        <SelectItem value="admin">Administrador (Control Total del POS)</SelectItem>
+                      </SelectContent>
+                    </Select>
                     </div>
 
                     <Button
@@ -388,7 +268,7 @@ function ConfiguracionPageContent() {
               </Card>
 
               {/* Table list card of collaborators */}
-              <Card className="border border-border/50 rounded-[2rem] overflow-hidden lg:col-span-2 shadow-sm">
+              <Card className="border border-border/50 rounded-[2rem] overflow-hidden lg:col-span-2 shadow-sm bg-card">
                 <CardHeader className="bg-muted/5 border-b border-border/20 px-6 py-5">
                   <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                     <Users className="h-4 w-4 text-indigo-500" />
@@ -471,7 +351,7 @@ function ConfiguracionPageContent() {
           {tabActiva === 'perfil' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Form profile updates */}
-              <Card className="border border-border/50 rounded-[2rem] overflow-hidden lg:col-span-2 shadow-sm">
+              <Card className="border border-border/50 rounded-[2rem] overflow-hidden lg:col-span-2 shadow-sm bg-card">
                 <CardHeader className="bg-muted/5 border-b border-border/20 px-6 py-5">
                   <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                     <User className="h-4 w-4 text-indigo-500" />
@@ -518,15 +398,18 @@ function ConfiguracionPageContent() {
 
                       <div className="space-y-1.5">
                         <Label htmlFor="perf_rol" className="text-[10px] font-black uppercase text-muted-foreground">Rol / Nivel de Acceso</Label>
-                        <select
-                          id="perf_rol"
+                        <Select
                           value={rolPerfil}
-                          onChange={(e) => setRolPerfil(e.target.value as any)}
-                          className="flex h-10 w-full rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold border-border/70 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          onValueChange={(val: any) => setRolPerfil(val)}
                         >
-                          <option value="admin">Administrador (Permisos Totales)</option>
-                          <option value="cashier">Cajero (Ventas y Operación)</option>
-                        </select>
+                          <SelectTrigger id="perf_rol" className="h-10 w-full rounded-xl border border-border bg-background text-xs font-bold border-border/70">
+                            <SelectValue placeholder="Selecciona rol" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">Administrador (Permisos Totales)</SelectItem>
+                            <SelectItem value="cashier">Cajero (Ventas y Operación)</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
 
@@ -549,7 +432,7 @@ function ConfiguracionPageContent() {
               </Card>
 
               {/* Informative panel about roles */}
-              <Card className="border border-border/50 rounded-[2rem] overflow-hidden lg:col-span-1 shadow-sm bg-gradient-to-tr from-indigo-500/5 to-purple-500/5">
+              <Card className="border border-border/50 rounded-[2rem] overflow-hidden lg:col-span-1 shadow-sm bg-gradient-to-tr from-indigo-500/5 to-purple-500/5 bg-card">
                 <CardHeader className="px-6 py-5">
                   <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                     <Shield className="h-4 w-4 text-indigo-500" />
@@ -578,7 +461,7 @@ function ConfiguracionPageContent() {
           {tabActiva === 'metas' && isAdmin && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Daily Sales Target Config */}
-              <Card className="border border-border/50 rounded-[2rem] overflow-hidden lg:col-span-2 shadow-sm">
+              <Card className="border border-border/50 rounded-[2rem] overflow-hidden lg:col-span-2 shadow-sm bg-card">
                 <CardHeader className="bg-muted/5 border-b border-border/20 px-6 py-5">
                   <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                     <Target className="h-4 w-4 text-indigo-500" />
@@ -628,7 +511,7 @@ function ConfiguracionPageContent() {
               </Card>
 
               {/* Informative panel about goals */}
-              <Card className="border border-border/50 rounded-[2rem] overflow-hidden lg:col-span-1 shadow-sm bg-gradient-to-tr from-emerald-500/5 to-indigo-500/5">
+              <Card className="border border-border/50 rounded-[2rem] overflow-hidden lg:col-span-1 shadow-sm bg-gradient-to-tr from-emerald-500/5 to-indigo-500/5 bg-card">
                 <CardHeader className="px-6 py-5">
                   <CardTitle className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
                     <Coins className="h-4 w-4 text-emerald-500" />
@@ -656,7 +539,7 @@ function ConfiguracionPageContent() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export default function Page() {
@@ -664,5 +547,5 @@ export default function Page() {
     <ProtectedRoute>
       <ConfiguracionPageContent />
     </ProtectedRoute>
-  )
+  );
 }

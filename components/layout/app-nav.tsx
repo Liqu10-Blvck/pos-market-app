@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, ShoppingCart, Package, History, LogOut, Users, User, Sun, Moon, TrendingUp, BookOpen, Loader2, Settings } from 'lucide-react'
+import { Home, ShoppingCart, Package, History, LogOut, Users, User, Sun, Moon, TrendingUp, BookOpen, Loader2, Settings, ClipboardList } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/auth-context'
 import { motion } from 'framer-motion'
@@ -21,6 +21,7 @@ import {
 const items = [
   { href: '/inicio', label: 'Inicio', icon: Home },
   { href: '/ventas', label: 'Ventas', icon: ShoppingCart },
+  { href: '/pedidos', label: 'Pedidos', icon: ClipboardList },
   { href: '/admin', label: 'Productos', icon: Package },
   { href: '/costos', label: 'Costos', icon: TrendingUp },
   { href: '/clientes', label: 'Clientes', icon: Users },
@@ -50,7 +51,12 @@ export function AppNav() {
         {/* Navigation Items */}
         <div className="flex-1 overflow-x-auto custom-scrollbar lg:mx-8">
           <div className="flex items-center gap-1.5 p-1 bg-muted/50 rounded-2xl w-fit">
-            {items.map((item) => {
+            {items.filter(item => {
+              if (['/admin', '/costos', '/contabilidad'].includes(item.href)) {
+                return user?.role === 'admin';
+              }
+              return true;
+            }).map((item) => {
               const Icon = item.icon
               const active = pathname === item.href
               return (

@@ -7,17 +7,23 @@ import { BrandLogo } from '@/components/ui/brand-logo';
 
 interface ProtectedRouteProps {
   children: ReactNode;
+  requiredRole?: 'admin' | 'cashier';
 }
 
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, loading } = useAuth();
+export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
+  const { user, isAuthenticated, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      router.replace('/');
+    if (!loading) {
+      if (!isAuthenticated) {
+        router.replace('/');
+      } else if (requiredRole && user?.role !== requiredRole && user?.role !== 'admin') {
+        // Redirigir a inicio si no tiene permisos
+        router.replace('/inicio');
+      }
     }
-  }, [isAuthenticated, loading, router]);
+  }, [isAuthenticated, loading, user, requiredRole, router]);
 
   if (loading) {
     return (
@@ -31,7 +37,11 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!isAuthenticated) {
-    return null; // Will redirect shortly
+    return null; // Redirigiendo
+  }
+
+  if (requiredRole && user?.role !== requiredRole && user?.role !== 'admin') {
+    return null; // Redirigiendo
   }
 
   return <>{children}</>;

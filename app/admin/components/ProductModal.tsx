@@ -12,6 +12,13 @@ import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
 import { useToast } from '../../../hooks/use-toast';
 import { useAdminStore } from '../hooks/useAdminStore';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../../components/ui/select';
 import { formatCLPCurrency, normalizeMoneyInput, parseChileanMoneyInput, compressImage } from '../../../lib/utils';
 import { 
   Plus, 
@@ -25,7 +32,11 @@ import {
   Calendar, 
   Info, 
   Scale, 
-  Hash 
+  Hash,
+  Apple,
+  Leaf,
+  Package2,
+  Award
 } from 'lucide-react';
 
 export const ProductModal: React.FC = () => {
@@ -128,14 +139,9 @@ export const ProductModal: React.FC = () => {
                 checked={formData.es_interes}
                 onChange={(e) => setFormData({ es_interes: e.target.checked })}
                 className="w-5 h-5 accent-indigo-600 border-border rounded cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={guardando || analizandoIA || editando !== null}
+                disabled={guardando || analizandoIA}
               />
             </div>
-            {editando !== null && (
-              <p className="text-[9px] text-amber-600 dark:text-amber-400 font-bold leading-tight pt-1 border-t border-indigo-500/10">
-                No se puede cambiar el tipo de registro (Catálogo vs Interés) una vez creado.
-              </p>
-            )}
           </div>
 
           {/* Facturable Switch */}
@@ -247,20 +253,71 @@ export const ProductModal: React.FC = () => {
             />
           </div>
 
-          {/* Barcode SKU */}
-          <div className="space-y-1.5">
-            <Label htmlFor="sku" className="text-xs font-bold text-foreground">Código SKU / Barra (Opcional)</Label>
-            <div className="relative">
-              <Barcode className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-60" />
-              <Input
-                id="sku"
-                value={formData.sku}
-                onChange={(e) => setFormData({ sku: e.target.value })}
-                placeholder="Ej: 7891234567890"
-                className="pl-10 rounded-xl h-11 text-[16px] md:text-sm font-semibold border-border/77"
-                disabled={guardando || analizandoIA}
-              />
+          {/* Barcode SKU & Category */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="sku" className="text-xs font-bold text-foreground">Código SKU / Barra (Opcional)</Label>
+              <div className="relative">
+                <Barcode className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-60" />
+                <Input
+                  id="sku"
+                  value={formData.sku}
+                  onChange={(e) => setFormData({ sku: e.target.value })}
+                  placeholder="Ej: 7891234567890"
+                  className="pl-10 rounded-xl h-11 text-[16px] md:text-sm font-semibold border-border/77"
+                  disabled={guardando || analizandoIA}
+                />
+              </div>
             </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="categoria" className="text-xs font-bold text-foreground">Categoría</Label>
+              <Select
+                value={formData.categoria}
+                onValueChange={(val) => setFormData({ categoria: val })}
+                disabled={guardando || analizandoIA}
+              >
+                <SelectTrigger id="categoria" className="h-11 rounded-xl text-sm font-semibold bg-background border border-border border-border/70">
+                  <SelectValue placeholder="Selecciona categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fruta">
+                    <span className="flex items-center gap-2">
+                      <Apple className="h-3.5 w-3.5 text-rose-500" />
+                      Fruta
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="verdura">
+                    <span className="flex items-center gap-2">
+                      <Leaf className="h-3.5 w-3.5 text-emerald-500" />
+                      Verdura
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="otros">
+                    <span className="flex items-center gap-2">
+                      <Package2 className="h-3.5 w-3.5 text-indigo-500" />
+                      Otros
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Quality field - relevant for fruits and vegetables */}
+          <div className="space-y-1.5">
+            <Label htmlFor="calidad" className="text-xs font-bold text-foreground flex items-center gap-1">
+              <Award className="h-3.5 w-3.5 text-amber-500" />
+              Calidad / Grado (Opcional)
+            </Label>
+            <Input
+              id="calidad"
+              value={formData.calidad}
+              onChange={(e) => setFormData({ calidad: e.target.value })}
+              placeholder="Ej: 1a Calidad, Extra, Corriente, 2a"
+              className="rounded-xl h-11 text-[16px] md:text-sm font-medium border-border/70"
+              disabled={guardando || analizandoIA}
+            />
           </div>
 
           {/* Cost and Margin input - AUTO CALCULATES SELLING PRICE */}

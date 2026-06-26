@@ -12,6 +12,13 @@ import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
 import { Badge } from '../../../components/ui/badge';
 import { useToast } from '../../../hooks/use-toast';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../../components/ui/select';
 import { useAdminStore } from '../hooks/useAdminStore';
 import { formatCLPCurrency, normalizeMoneyInput, parseChileanMoneyInput, compressImage } from '../../../lib/utils';
 import { 
@@ -250,18 +257,21 @@ export const PurchaseModal: React.FC = () => {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="compra_tipo_doc" className="text-xs font-bold text-foreground">Tipo de Comprobante</Label>
-                <select
-                  id="compra_tipo_doc"
+                <Select
                   value={compraData.tipo_documento}
-                  onChange={(e) => setCompraData({ tipo_documento: e.target.value as any })}
-                  className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm border-border/70 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onValueChange={(val: any) => setCompraData({ tipo_documento: val })}
                 >
-                  <option value="boleta">Boleta / Recibo Informal</option>
-                  <option value="factura">Factura (Con IVA Crédito 19%)</option>
-                  <option value="recibo">Recibo / Ticket</option>
-                  <option value="guia">Guía de Despacho</option>
-                  <option value="otro">Otro Documento</option>
-                </select>
+                  <SelectTrigger id="compra_tipo_doc" className="h-11 w-full rounded-xl border border-input bg-background text-sm border-border/70 font-semibold">
+                    <SelectValue placeholder="Selecciona tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="boleta">Boleta / Recibo Informal</SelectItem>
+                    <SelectItem value="factura">Factura (Con IVA Crédito 19%)</SelectItem>
+                    <SelectItem value="recibo">Recibo / Ticket</SelectItem>
+                    <SelectItem value="guia">Guía de Despacho</SelectItem>
+                    <SelectItem value="otro">Otro Documento</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1.5">
@@ -314,16 +324,19 @@ export const PurchaseModal: React.FC = () => {
 
               <div className="space-y-1.5">
                 <Label htmlFor="compra_metodo_pago" className="text-xs font-bold text-foreground">Método de Pago</Label>
-                <select
-                  id="compra_metodo_pago"
+                <Select
                   value={compraData.metodo_pago}
-                  onChange={(e) => setCompraData({ metodo_pago: e.target.value as any })}
-                  className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm border-border/70 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onValueChange={(val: any) => setCompraData({ metodo_pago: val })}
                 >
-                  <option value="efectivo">Efectivo</option>
-                  <option value="transferencia">Transferencia / Tarjeta</option>
-                  <option value="credito">Fiado / Crédito Proveedor</option>
-                </select>
+                  <SelectTrigger id="compra_metodo_pago" className="h-11 w-full rounded-xl border border-input bg-background text-sm border-border/70 font-semibold">
+                    <SelectValue placeholder="Selecciona método" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="efectivo">Efectivo</SelectItem>
+                    <SelectItem value="transferencia">Transferencia / Tarjeta</SelectItem>
+                    <SelectItem value="credito">Fiado / Crédito Proveedor</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

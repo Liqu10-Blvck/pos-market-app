@@ -131,7 +131,11 @@ export function WeightModal({ producto, open, onClose, onAgregar }: WeightModalP
                 </div>
                 <Badge variant="secondary" className="font-bold text-xs h-8 px-3 bg-muted dark:bg-muted/50 text-foreground border-border/40">
                   Stock: {producto.stock_actual.toFixed(2)} {producto.unidad}
-                  {producto.cantidad_por_caja && producto.cantidad_por_caja > 0 ? ` (~${(producto.stock_actual / producto.cantidad_por_caja).toFixed(1)} ${empaqueLabel}s)` : ''}
+                  {producto.cantidad_por_caja && producto.cantidad_por_caja > 0 ? (() => {
+                    const ratio = producto.stock_actual / producto.cantidad_por_caja;
+                    const formattedRatio = ratio % 1 === 0 ? ratio.toFixed(0) : ratio.toFixed(1);
+                    return ` (~${formattedRatio} ${empaqueLabel}s)`;
+                  })() : ''}
                 </Badge>
               </DialogHeader>
 

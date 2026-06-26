@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { SesionService } from '@/lib/services/sesion.service';
-import { VentasService } from '@/lib/services/ventas.service';
-import { MetasService } from '@/lib/services/metas.service';
-import { SesionCaja, Venta } from '@/lib/types/pos';
+import { useAppStore } from '@/lib/store/useAppStore';
+import { useInicioStore } from './hooks/useInicioStore';
+import { calcPct } from './utils/inicioUtils';
+
 import { SesionCaja as SesionCajaComponent } from '@/components/pos/sesion-caja';
 import { AppNav } from '@/components/layout/app-nav';
 import { formatCLPCurrency } from '@/lib/utils';
@@ -16,6 +16,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth-context';
+import { BrandLogo } from '@/components/ui/brand-logo';
+import { ProtectedRoute } from '@/components/layout/protected-route';
+
 import { 
   ShoppingCart, 
   Package, 
@@ -31,78 +34,33 @@ import {
   Send, 
   AlertTriangle 
 } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { BrandLogo } from '@/components/ui/brand-logo';
-import { ProtectedRoute } from '@/components/layout/protected-route';
 
 function InicioPage() {
-  const [sesionActiva, setSesionActiva] = useState<SesionCaja | null>(null);
-  const [resumenSesion, setResumenSesion] = useState<any>(null);
-  const [progresoMetas, setProgresoMetas] = useState<any>(null);
-  const [metaDialog, setMetaDialog] = useState(false);
-  const [nuevaMetaDiaria, setNuevaMetaDiaria] = useState('');
-  const [cargando, setCargando] = useState(true);
-  const [guardandoMeta, setGuardandoMeta] = useState(false);
-
   const router = useRouter();
   const { user } = useAuth();
   const { toast } = useToast();
 
+  // Global App Store values
+  const sesionActiva = useAppStore((state) => state.sesionActiva);
+  const setSesionActiva = useAppStore((state) => state.setSesionActiva);
+
+  // Local Store values
+  const resumenSesion = useInicioStore((state) => state.resumenSesion);
+  const progresoMetas = useInicioStore((state) => state.progresoMetas);
+  const metaDialog = useInicioStore((state) => state.metaDialog);
+  const nuevaMetaDiaria = useInicioStore((state) => state.nuevaMetaDiaria);
+  const cargando = useInicioStore((state) => state.cargando);
+  const guardandoMeta = useInicioStore((state) => state.guardandoMeta);
+
+  const setMetaDialog = useInicioStore((state) => state.setMetaDialog);
+  const setNuevaMetaDiaria = useInicioStore((state) => state.setNuevaMetaDiaria);
+  const cargarDatos = useInicioStore((state) => state.cargarDatos);
+  const handleGuardarMeta = useInicioStore((state) => state.handleGuardarMeta);
+
+  // Load data on mount
   useEffect(() => {
-    cargarDatos();
-  }, []);
-
-  const cargarDatos = async () => {
-    try {
-      const sesion = await SesionService.obtenerSesionActiva();
-      setSesionActiva(sesion);
-      if (sesion) {
-        const resumen = await VentasService.obtenerResumenSesion(sesion.id);
-        setResumenSesion(resumen);
-      }
-      
-      const metas = await MetasService.obtenerProgresoMetas();
-      setProgresoMetas(metas);
-      setNuevaMetaDiaria(metas.metaDiaria.toString());
-    } catch (error) {
-      console.error('Error al cargar datos:', error);
-    } finally {
-      setCargando(false);
-    }
-  };
-
-  const handleGuardarMeta = async () => {
-    const monto = parseInt(nuevaMetaDiaria);
-    if (isNaN(monto) || monto <= 0) {
-      toast({
-        title: 'Monto inválido',
-        description: 'Por favor, ingresa un monto válido mayor a 0',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    setGuardandoMeta(true);
-    try {
-      await MetasService.guardarMetaDiaria(monto, user?.id);
-      toast({
-        title: 'Meta actualizada',
-        description: `La meta diaria de ventas se ha configurado en ${formatCLPCurrency(monto)}.`
-      });
-      setMetaDialog(false);
-      // Recargar datos
-      const metas = await MetasService.obtenerProgresoMetas();
-      setProgresoMetas(metas);
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'No se pudo guardar la meta.',
-        variant: 'destructive'
-      });
-    } finally {
-      setGuardandoMeta(false);
-    }
-  };
+    cargarDatos(setSesionActiva);
+  }, [cargarDatos, setSesionActiva]);
 
   const menuItems = [
     { 
@@ -154,12 +112,6 @@ function InicioPage() {
       </div>
     );
   }
-
-  // Helper para porcentaje de metas
-  const calcPct = (venta: number, meta: number) => {
-    if (!meta) return 0;
-    return Math.min(100, Math.round((venta / meta) * 100));
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -297,7 +249,7 @@ function InicioPage() {
           <div className="lg:col-span-4 space-y-6">
             
             {/* Sales Goals Tracker Widget */}
-            <Card className="rounded-3xl border-border/50 shadow-sm overflow-hidden">
+            <Card className="rounded-3xl border-border/50 shadow-sm overflow-hidden bg-card">
               <CardHeader className="bg-muted/10 pb-4 pt-6 flex flex-row items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -352,7 +304,7 @@ function InicioPage() {
                       </div>
                       <div className="h-2.5 w-full bg-muted rounded-full overflow-hidden">
                         <div 
-                          className="h-full bg-blue-505 bg-blue-500 rounded-full transition-all duration-500"
+                          className="h-full bg-blue-500 rounded-full transition-all duration-500"
                           style={{ width: `${calcPct(progresoMetas.ventasSemana, progresoMetas.metaSemanal)}%` }}
                         />
                       </div>
@@ -392,7 +344,7 @@ function InicioPage() {
               </CardContent>
             </Card>
 
-            <Card className="rounded-3xl border-border/50 shadow-sm overflow-hidden">
+            <Card className="rounded-3xl border-border/50 shadow-sm overflow-hidden bg-card">
               <CardHeader className="bg-muted/10 pb-4 pt-6 text-center">
                 <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                   <DollarSign className="h-6 w-6" />
@@ -429,7 +381,7 @@ function InicioPage() {
 
       {/* Meta Config Dialog */}
       <Dialog open={metaDialog} onOpenChange={setMetaDialog}>
-        <DialogContent>
+        <DialogContent className="rounded-[2rem] border-border/80 shadow-2xl p-5 sm:p-6 bg-card">
           <DialogHeader>
             <DialogTitle className="text-2xl font-black">Configurar Objetivo de Ventas</DialogTitle>
             <DialogDescription>
@@ -447,14 +399,15 @@ function InicioPage() {
                 onChange={(e) => setNuevaMetaDiaria(e.target.value)}
                 className="text-lg h-12 rounded-xl font-bold"
                 autoFocus
+                disabled={guardandoMeta}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setMetaDialog(false)} disabled={guardandoMeta}>
+            <Button variant="outline" onClick={() => setMetaDialog(false)} disabled={guardandoMeta} className="rounded-xl">
               Cancelar
             </Button>
-            <Button onClick={handleGuardarMeta} disabled={guardandoMeta}>
+            <Button onClick={() => handleGuardarMeta(user?.id, toast)} disabled={guardandoMeta} className="rounded-xl bg-primary hover:bg-primary/90 text-white">
               {guardandoMeta ? 'Guardando...' : 'Actualizar Meta'}
             </Button>
           </DialogFooter>

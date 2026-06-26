@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { doc, setDoc, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { verifySession } from '@/lib/api-auth';
 
 export async function POST(req: NextRequest) {
   try {
+    const userSession = await verifySession(req, 'admin');
+    if (!userSession) {
+      return NextResponse.json(
+        { error: 'No autorizado. Solo los administradores activos pueden crear usuarios.' },
+        { status: 401 }
+      );
+    }
+
     const { name, email, password, role } = await req.json();
 
     if (!name || !email || !password || !role) {
@@ -63,16 +70,49 @@ export async function POST(req: NextRequest) {
       // No fallamos toda la operación, solo logueamos el error
     }
 
-    // 3. Crear el documento de usuario en la colección "usuarios" de Firestore
-    const userRef = doc(db, 'usuarios', localId);
-    await setDoc(userRef, {
-      uid: localId,
-      nombre: name,
-      email: email,
-      role: role, // 'admin' | 'cashier'
-      activo: true,
-      createdAt: Timestamp.now()
+    // 3. Crear el documento de usuario en la colección "usuarios" de Firestore usando REST API con el token del administrador
+    const authHeader = req.headers.get('authorization');
+    const token = authHeader?.split('Bearer ')[1];
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Token de autorización del administrador faltante.' },
+        { status: 401 }
+      );
+    }
+
+    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+    const isEmulator = process.env.FIRESTORE_EMULATOR_HOST;
+    let firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/usuarios/${localId}`;
+    if (isEmulator) {
+      firestoreUrl = `http://${process.env.FIRESTORE_EMULATOR_HOST}/v1/projects/${projectId}/databases/(default)/documents/usuarios/${localId}`;
+    }
+
+    const firestoreRes = await fetch(firestoreUrl, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        fields: {
+          uid: { stringValue: localId },
+          nombre: { stringValue: name },
+          email: { stringValue: email },
+          role: { stringValue: role },
+          activo: { booleanValue: true },
+          createdAt: { timestampValue: new Date().toISOString() }
+        }
+      })
     });
+
+    if (!firestoreRes.ok) {
+      const firestoreData = await firestoreRes.json();
+      console.error('Error al guardar el usuario en Firestore REST API:', firestoreData);
+      return NextResponse.json(
+        { error: firestoreData.error?.message || 'Error al guardar los detalles del usuario en la base de datos.' },
+        { status: firestoreRes.status }
+      );
+    }
 
     return NextResponse.json({ 
       success: true, 

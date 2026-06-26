@@ -1,9 +1,7 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { useRegistroStore } from './hooks/useRegistroStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -13,62 +11,29 @@ import { BrandLogo } from '@/components/ui/brand-logo';
 import Link from 'next/link';
 
 export default function RegistroPage() {
-  const [nombre, setNombre] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  
+  const nombre = useRegistroStore((state) => state.nombre);
+  const email = useRegistroStore((state) => state.email);
+  const password = useRegistroStore((state) => state.password);
+  const confirmPassword = useRegistroStore((state) => state.confirmPassword);
+  const error = useRegistroStore((state) => state.error);
+  const isLoading = useRegistroStore((state) => state.isLoading);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const setNombre = useRegistroStore((state) => state.setNombre);
+  const setEmail = useRegistroStore((state) => state.setEmail);
+  const setPassword = useRegistroStore((state) => state.setPassword);
+  const setConfirmPassword = useRegistroStore((state) => state.setConfirmPassword);
+  const registrarCuenta = useRegistroStore((state) => state.registrarCuenta);
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres.');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError('Las contraseñas no coinciden.');
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      // 1. Create user in Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      
-      // 2. Set profile displayName
-      if (userCredential.user) {
-        await updateProfile(userCredential.user, {
-          displayName: nombre
-        });
-      }
-
-      // 3. Redirect to dashboard
-      router.replace('/inicio');
-    } catch (err: any) {
-      console.error('Error al registrar usuario:', err);
-      if (err.code === 'auth/email-already-in-use') {
-        setError('El correo electrónico ya está registrado.');
-      } else if (err.code === 'auth/invalid-email') {
-        setError('El correo electrónico no es válido.');
-      } else if (err.code === 'auth/weak-password') {
-        setError('La contraseña es demasiado débil.');
-      } else {
-        setError(err.message || 'Ocurrió un error al registrar la cuenta.');
-      }
-    } finally {
-      setIsLoading(false);
-    }
+    registrarCuenta(router);
   };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-sm bg-card">
         <CardHeader className="flex flex-col items-center justify-center pb-6">
           <BrandLogo className="mb-2" showText={true} />
           <p className="text-sm font-medium text-muted-foreground opacity-70">

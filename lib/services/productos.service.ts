@@ -73,6 +73,8 @@ export class ProductosService {
       cantidad_por_caja: data.cantidad_por_caja !== undefined ? data.cantidad_por_caja : null,
       precio_caja: data.precio_caja !== undefined ? data.precio_caja : null,
       tipo_empaque: data.tipo_empaque ? data.tipo_empaque.trim() : null,
+      categoria: data.categoria ? data.categoria.trim() : null,
+      calidad: data.calidad ? data.calidad.trim() : null,
       facturable: data.facturable !== false,
       activo: true,
       imagen_url: finalImageUrl || null,

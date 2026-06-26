@@ -10,6 +10,7 @@ import { Producto } from '@/lib/types/pos';
 import { useToast } from '@/hooks/use-toast';
 import { Camera, Keyboard, AlertCircle, Loader2, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { auth } from '@/lib/firebase';
 
 interface BarcodeScannerModalProps {
   open: boolean;
@@ -163,10 +164,12 @@ export function BarcodeScannerModal({
 
     setIsAnalyzing(true);
     try {
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch('/api/scan-barcode', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ image: base64Image }),
       });

@@ -8,7 +8,8 @@ import {
   query, 
   where, 
   orderBy,
-  Timestamp 
+  Timestamp,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -179,6 +180,18 @@ export class MetasService {
     } catch (err) {
       console.error('Error al obtener metas financieras:', err);
       return [];
+    }
+  }
+
+  /**
+   * Elimina una meta financiera por su ID.
+   */
+  static async eliminarMetaFinanciera(id: string): Promise<void> {
+    try {
+      await deleteDoc(doc(db, this.METAS_FINANCIERAS_COLLECTION, id));
+    } catch (err) {
+      console.error('Error al eliminar meta financiera:', err);
+      throw err;
     }
   }
 }

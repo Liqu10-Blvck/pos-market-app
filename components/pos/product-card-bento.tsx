@@ -34,7 +34,9 @@ export function ProductCardBento({ producto, onSelect, index }: ProductCardBento
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/40 dark:bg-muted/20 overflow-hidden group-hover:scale-110 transition-transform duration-500 border border-border/10">
-          {asset.type === 'image' ? (
+          {producto.imagen_url ? (
+            <img src={producto.imagen_url} alt={producto.nombre} className="h-full w-full object-cover" />
+          ) : asset.type === 'image' ? (
             <img src={asset.value} alt={producto.nombre} className="h-full w-full object-cover" />
           ) : asset.type === 'emoji' ? (
             <span className="text-3xl">{asset.value}</span>
@@ -72,10 +74,15 @@ export function ProductCardBento({ producto, onSelect, index }: ProductCardBento
         </div>
         <div className="text-right">
           <span className="text-sm font-black block leading-none text-foreground">
-            {producto.stock_actual}
+            {producto.stock_actual} {producto.unidad}
           </span>
-          <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tighter">
-            Disponibles
+          <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tighter mt-0.5 block">
+            {producto.cantidad_por_caja && producto.cantidad_por_caja > 0 ? (() => {
+              const ratio = producto.stock_actual / producto.cantidad_por_caja;
+              const formattedRatio = ratio % 1 === 0 ? ratio.toFixed(0) : ratio.toFixed(1);
+              const empaqueLabel = producto.tipo_empaque || 'Caja';
+              return `~${formattedRatio} ${empaqueLabel}s`;
+            })() : 'Disponibles'}
           </span>
         </div>
       </div>

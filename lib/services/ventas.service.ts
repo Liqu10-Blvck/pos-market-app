@@ -231,6 +231,21 @@ export class VentasService {
     return resumen;
   }
 
+  static async obtenerVentasPorCliente(clienteId: string): Promise<Venta[]> {
+    const q = query(
+      collection(db, this.COLLECTION),
+      where('cliente_id', '==', clienteId)
+    );
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Venta))
+      .sort((a, b) => b.fecha.toMillis() - a.fecha.toMillis());
+  }
+
   static calcularNeto(pesoBruto: number, tara: number): number {
     const neto = pesoBruto - tara;
     return Math.max(0, Number(neto.toFixed(2)));

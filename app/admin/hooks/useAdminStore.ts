@@ -30,6 +30,8 @@ interface FormDataState {
   costo_caja: string;
   precio_caja: string;
   tipo_empaque: string;
+  categoria: string;
+  calidad: string;
   facturable: boolean;
 }
 
@@ -107,6 +109,8 @@ const initialFormData = (tabActiva: 'catalogo' | 'interes' = 'catalogo'): FormDa
   costo_caja: '',
   precio_caja: '',
   tipo_empaque: '',
+  categoria: 'otros',
+  calidad: '',
   facturable: true,
 });
 
@@ -153,7 +157,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
 
   handleAbrirModal: (producto) => {
     if (producto) {
-      const costoCaja = (producto.costo_actual && producto.cantidad_por_caja)
+      const costoCaja = (producto.costo_actual !== undefined && producto.costo_actual !== null && producto.cantidad_por_caja)
         ? Math.round(producto.costo_actual * producto.cantidad_por_caja).toString()
         : '';
         
@@ -161,18 +165,20 @@ export const useAdminStore = create<AdminState>((set, get) => ({
         editando: producto,
         formData: {
           nombre: producto.nombre,
-          costo: producto.costo_actual ? producto.costo_actual.toString() : '',
-          margen: producto.margen_deseado ? producto.margen_deseado.toString() : '30',
+          costo: (producto.costo_actual !== undefined && producto.costo_actual !== null) ? producto.costo_actual.toString() : '',
+          margen: (producto.margen_deseado !== undefined && producto.margen_deseado !== null) ? producto.margen_deseado.toString() : '30',
           precio: producto.precio ? formatCLPCurrency(producto.precio) : '',
           unidad: producto.unidad,
           stock_actual: producto.stock_actual.toString(),
           sku: producto.sku || '',
           fecha_caducidad: producto.fecha_caducidad || '',
           es_interes: producto.es_interes || false,
-          cantidad_por_caja: producto.cantidad_por_caja ? producto.cantidad_por_caja.toString() : '',
+          cantidad_por_caja: (producto.cantidad_por_caja !== undefined && producto.cantidad_por_caja !== null) ? producto.cantidad_por_caja.toString() : '',
           costo_caja: costoCaja,
           precio_caja: producto.precio_caja ? formatCLPCurrency(producto.precio_caja) : '',
           tipo_empaque: producto.tipo_empaque || '',
+          categoria: producto.categoria || 'otros',
+          calidad: producto.calidad || '',
           facturable: producto.facturable !== false,
         },
         localImages: producto.imagen_url ? [{ file: null, url: producto.imagen_url }] : [],
@@ -445,6 +451,8 @@ export const useAdminStore = create<AdminState>((set, get) => ({
           cantidad_por_caja: parsedCantidadCaja,
           precio_caja: parsedPrecioCaja,
           tipo_empaque: formData.tipo_empaque,
+          categoria: formData.categoria,
+          calidad: formData.calidad || undefined,
           facturable: formData.facturable,
           imagen_url: editando?.imagen_url || null,
         },

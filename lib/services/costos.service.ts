@@ -44,6 +44,10 @@ export class CostosService {
 
       // Actualizar el producto
       const productoRef = doc(db, this.COLLECTION_PRODUCTOS, productoId);
+      const prodSnap = await transaction.get(productoRef);
+      const prodData = prodSnap.exists() ? prodSnap.data() as Producto : null;
+      const currentPrice = prodData ? prodData.precio : 0;
+
       const updateData: Partial<Producto> = {
         costo_actual: costo,
         updatedAt: Timestamp.now()
@@ -54,6 +58,17 @@ export class CostosService {
       }
       
       transaction.update(productoRef, updateData);
+
+      // Also register in registro_precios_mayoristas to log cost variation
+      const mayoristaLogRef = doc(collection(db, 'registro_precios_mayoristas'));
+      transaction.set(mayoristaLogRef, {
+        fecha: Timestamp.now(),
+        producto_id: productoId,
+        nombre: nombreProducto,
+        costo_local: costo,
+        precio_venta_local: currentPrice,
+        precio_referencia: costo
+      });
 
       return costoRef.id;
     });

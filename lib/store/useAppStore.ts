@@ -1,8 +1,7 @@
 import { create } from 'zustand';
-import { Producto, Cliente } from '../types/pos';
+import { Producto, Cliente, SesionCaja } from '../types/pos';
 import { ProductosService } from '../services/productos.service';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
+import { ClientesService } from '../services/clientes.service';
 
 interface AppState {
   productos: Producto[];
@@ -10,11 +9,13 @@ interface AppState {
   clientes: Cliente[];
   clientesCargados: boolean;
   cargandoGlobal: boolean;
+  sesionActiva: SesionCaja | null;
   
   // Actions
   setCargandoGlobal: (loading: boolean) => void;
   setProductos: (productos: Producto[]) => void;
   setClientes: (clientes: Cliente[]) => void;
+  setSesionActiva: (sesion: SesionCaja | null) => void;
   
   // Subscription listeners
   iniciarProductosListener: () => () => void;
@@ -33,10 +34,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   clientes: [],
   clientesCargados: false,
   cargandoGlobal: false,
+  sesionActiva: null,
 
   setCargandoGlobal: (loading) => set({ cargandoGlobal: loading }),
   setProductos: (productos) => set({ productos, productosCargados: true }),
   setClientes: (clientes) => set({ clientes, clientesCargados: true }),
+  setSesionActiva: (sesionActiva) => set({ sesionActiva }),
 
   iniciarProductosListener: () => {
     productosRefCount++;
@@ -62,13 +65,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     clientesRefCount++;
     
     if (!activeClientesUnsubscribe) {
-      activeClientesUnsubscribe = onSnapshot(collection(db, 'clientes'), (snapshot) => {
-        const clientesData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Cliente[];
-        const ordenados = clientesData.sort((a, b) => a.nombre.localeCompare(b.nombre));
-        set({ clientes: ordenados, clientesCargados: true });
+      activeClientesUnsubscribe = ClientesService.suscribirAClientes((clientes) => {
+        set({ clientes, clientesCargados: true });
       });
     }
 

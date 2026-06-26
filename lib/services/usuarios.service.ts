@@ -7,7 +7,7 @@ import {
   query, 
   orderBy 
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { User } from '../types/pos';
 
 export interface UserDB {
@@ -33,6 +33,7 @@ export class UsuariosService {
       );
       const snap = await getDocs(q);
       return snap.docs.map(doc => ({
+        uid: doc.id,
         id: doc.id,
         ...doc.data()
       } as unknown as UserDB));
@@ -46,10 +47,12 @@ export class UsuariosService {
    * Crea un usuario mediante la API interna (para evitar desloguear al administrador actual).
    */
   static async crearUsuario(data: Omit<UserDB, 'uid' | 'activo' | 'createdAt'> & { password: string }): Promise<void> {
+    const token = await auth.currentUser?.getIdToken();
     const res = await fetch('/api/usuarios', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({
         name: data.nombre,

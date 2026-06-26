@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { signInWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged } from "firebase/auth"
-import { doc, getDoc, setDoc, updateDoc, Timestamp } from "firebase/firestore"
+import { doc, getDoc, setDoc, updateDoc, Timestamp, collection, getDocs } from "firebase/firestore"
 import { auth, db } from "./firebase"
 import type { User } from "./types/pos"
 
@@ -40,13 +40,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               })
             }
           } else {
-            // Si es el primer usuario o no se encuentra el documento, lo creamos como admin automáticamente
+            // Si es el primer usuario o no se encuentra el documento, lo creamos de forma segura.
+            // Si la colección está vacía o es el correo del dueño, es admin activo; si no, es cajero inactivo.
+            let isFirstUser = false;
+            try {
+              const usuariosSnap = await getDocs(collection(db, "usuarios"));
+              isFirstUser = usuariosSnap.empty;
+            } catch (snapErr) {
+              console.error("Error al verificar usuarios en base de datos:", snapErr);
+            }
+
+            const isOwner = firebaseUser.email === 'nicolasmacortesgallardo@gmail.com';
+            const role = (isFirstUser || isOwner) ? "admin" : "cashier";
+            const activo = (isFirstUser || isOwner) ? true : false;
+
             const name = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Usuario";
             const newUser = {
               nombre: name,
               email: firebaseUser.email || "",
-              role: "admin",
-              activo: true,
+              role,
+              activo,
               createdAt: Timestamp.now()
             };
             try {
@@ -54,12 +67,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             } catch (writeErr) {
               console.error("Error al auto-crear usuario en Firestore:", writeErr);
             }
-            setUser({
-              id: firebaseUser.uid,
-              name: name,
-              email: firebaseUser.email || "",
-              role: "admin"
-            })
+
+            if (!activo) {
+              await firebaseSignOut(auth);
+              setUser(null);
+            } else {
+              setUser({
+                id: firebaseUser.uid,
+                name: name,
+                email: firebaseUser.email || "",
+                role
+              });
+            }
           }
         } catch (error) {
           console.error("Error al recuperar datos del usuario:", error)

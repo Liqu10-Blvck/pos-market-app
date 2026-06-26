@@ -19,6 +19,8 @@ export interface Producto {
   cantidad_por_caja?: number;
   precio_caja?: number;
   tipo_empaque?: string; // e.g. 'Caja', 'Saco', 'Malla', 'Bandeja'
+  categoria?: string; // 'fruta', 'verdura', 'otros', etc.
+  calidad?: string; // quality grade from wholesale price list, e.g. '1a', '2a', 'Extra', 'Corriente'
   facturable?: boolean;
   imagen_factura_url?: string;
   createdAt?: Timestamp;
@@ -60,6 +62,10 @@ export interface Cliente {
   telefono?: string;
   saldo_deuda: number;
   activo?: boolean;
+  direccion?: string;
+  nombre_negocio?: string;
+  rubro_negocio?: string;
+  limite_credito?: number;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -110,4 +116,14 @@ export interface ConsultaIALog {
   respuesta: string;
   productos_vinculados: string[];
   fecha: Timestamp;
+}
+
+export interface RegistroPrecioMayorista {
+  id?: string;
+  fecha: Timestamp;
+  producto_id: string;
+  nombre: string;
+  costo_local: number;
+  precio_venta_local: number;
+  precio_referencia: number;
 }

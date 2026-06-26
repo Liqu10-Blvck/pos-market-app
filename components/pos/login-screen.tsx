@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { FieldGroup, Field, FieldLabel } from "@/components/ui/field"
 import { LogIn, AlertCircle } from "lucide-react"
 import { BrandLogo } from "@/components/ui/brand-logo"
-import Link from "next/link"
 
 export function LoginScreen() {
   const { login } = useAuth()
@@ -16,6 +15,16 @@ export function LoginScreen() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [isRegistered, setIsRegistered] = useState(false)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('registered') === 'true') {
+        setIsRegistered(true)
+      }
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -45,6 +54,14 @@ export function LoginScreen() {
           </p>
         </CardHeader>
         <CardContent>
+          {isRegistered && (
+            <div className="mb-4 flex flex-col gap-1 rounded-2xl bg-emerald-500/10 p-4 text-xs font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              <p className="font-black text-sm uppercase tracking-wider">¡Registro Exitoso!</p>
+              <p className="font-medium text-muted-foreground leading-relaxed">
+                Tu cuenta ha sido creada. Solicita a un administrador que la active desde el panel de Configuración para poder ingresar.
+              </p>
+            </div>
+          )}
           <form onSubmit={handleSubmit}>
             <FieldGroup>
               <Field>
@@ -84,13 +101,6 @@ export function LoginScreen() {
               <LogIn className="mr-2 size-4" />
               {isLoading ? "Ingresando..." : "Ingresar"}
             </Button>
-
-            <div className="mt-4 text-center">
-              <span className="text-xs text-muted-foreground">¿No tienes cuenta? </span>
-              <Link href="/registro" className="text-xs font-bold text-primary hover:underline transition-all">
-                Regístrate aquí
-              </Link>
-            </div>
           </form>
 
         </CardContent>

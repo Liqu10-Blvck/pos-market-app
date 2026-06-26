@@ -140,7 +140,7 @@ function AdminPage() {
 
 export default function Page() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute requiredRole="admin">
       <AdminPage />
     </ProtectedRoute>
   );

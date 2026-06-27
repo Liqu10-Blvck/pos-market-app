@@ -6,11 +6,10 @@ import { useAppStore } from '@/lib/store/useAppStore';
 import { Pedido } from '@/lib/types/pedido';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatCLPCurrency } from '@/lib/utils';
-import { Clock, User, Package, MapPin, Truck, XCircle, DollarSign, Trash2 } from 'lucide-react';
+import { Clock, User, Package, MapPin, Truck, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { MetodoPago } from '@/lib/types/pos';
@@ -21,6 +20,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 export function OrderDetailModal() {
   const { toast } = useToast();
@@ -38,138 +48,142 @@ export function OrderDetailModal() {
   const handleActualizarEstado = usePedidosStore((state) => state.handleActualizarEstado);
   const handleCompletarPagoDirecto = usePedidosStore((state) => state.handleCompletarPagoDirecto);
   const handleEntregarYCobrar = usePedidosStore((state) => state.handleEntregarYCobrar);
-  const handleEliminarPedido = usePedidosStore((state) => state.handleEliminarPedido);
 
   if (!pedido) return null;
 
   const isFinalState = pedido.estado === 'entregado' || pedido.estado === 'cancelado';
   const isPaid = pedido.estado_pago === 'pagado';
+  const isPrepared = pedido.estado === 'preparado';
+  const isDelivery = pedido.direccion_entrega && pedido.direccion_entrega !== 'Retiro en Local';
 
-  const getEstadoBadge = (estado: Pedido['estado']) => {
-    switch (estado) {
-      case 'pendiente':
-        return <Badge className="bg-amber-500/10 text-amber-600 dark:text-amber-400 font-black uppercase tracking-wider text-[10px] border border-amber-500/20 rounded-xl px-2.5 py-1">Pendiente</Badge>;
-      case 'preparado':
-        return <Badge className="bg-blue-500/10 text-blue-600 dark:text-blue-400 font-black uppercase tracking-wider text-[10px] border border-blue-500/20 rounded-xl px-2.5 py-1">Preparado</Badge>;
-      case 'entregado':
-        return <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-black uppercase tracking-wider text-[10px] border border-emerald-500/20 rounded-xl px-2.5 py-1">Entregado</Badge>;
-      case 'cancelado':
-        return <Badge className="bg-red-500/10 text-red-600 dark:text-red-400 font-black uppercase tracking-wider text-[10px] border border-red-500/20 rounded-xl px-2.5 py-1">Cancelado</Badge>;
-    }
+  // Format creation date
+  const formattedDate = pedido.fecha ? format(pedido.fecha.toDate(), 'dd/MM/yyyy HH:mm:ss') : '';
+
+  const handleMarcarComoPreparado = async () => {
+    await handleActualizarEstado(pedido.id, 'preparado', toast);
   };
 
-  const getPagoBadge = (pago: Pedido['estado_pago']) => {
-    if (pago === 'pagado') {
-      return <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-black uppercase tracking-wider text-[10px] border border-emerald-500/20 rounded-xl px-2.5 py-1">Pagado</Badge>;
+  const handleCobrarRetiro = async () => {
+    if (!sesionActiva) {
+      toast({
+        title: 'Caja cerrada',
+        description: 'Debes abrir una sesión de caja antes de registrar cobros.',
+        variant: 'destructive'
+      });
+      return;
     }
-    return <Badge className="bg-rose-500/10 text-rose-600 dark:text-rose-400 font-black uppercase tracking-wider text-[10px] border border-rose-500/20 rounded-xl px-2.5 py-1">Impago</Badge>;
+    // Para retiros, cobramos directo usando el medio de pago del pedido
+    await handleCompletarPagoDirecto(pedido.id, pedido.metodo_pago || 'efectivo', toast);
   };
 
   const handleEntregarPedido = async () => {
-    if (pedido.estado_pago === 'pendiente') {
-      if (!sesionActiva) {
-        toast({
-          title: 'Caja cerrada',
-          description: 'Abre la caja desde la página de inicio para procesar el cobro y la venta.',
-          variant: 'destructive'
-        });
-        return;
-      }
-      
-      if (metodoPago === 'fiado' && !pedido.cliente_id) {
-        toast({
-          title: 'Venta fiada fallida',
-          description: 'Debe seleccionar un cliente registrado (no Cliente General) para fiar el pedido.',
-          variant: 'destructive'
-        });
-        return;
-      }
+    // Si ya está pagado, solo registramos entrega
+    await handleActualizarEstado(pedido.id, 'entregado', toast);
+    setDetailModalOpen(false);
+  };
 
-      await handleEntregarYCobrar(pedido, metodoPago, sesionActiva.id, toast);
-    } else {
-      // Si ya está pagado pero no entregado, solo cambiamos el estado del pedido
-      await handleActualizarEstado(pedido.id, 'entregado', toast);
-      setDetailModalOpen(false);
+  const handleEntregarYCobrarPedido = async () => {
+    if (!sesionActiva) {
+      toast({
+        title: 'Caja cerrada',
+        description: 'Debes abrir una sesión de caja antes de registrar cobros.',
+        variant: 'destructive'
+      });
+      return;
     }
+    await handleEntregarYCobrar(pedido, metodoPago, sesionActiva.id, toast);
+    setDetailModalOpen(false);
   };
 
   return (
     <Dialog open={detailModalOpen} onOpenChange={setDetailModalOpen}>
-      <DialogContent className="w-[95vw] sm:w-[90vw] md:max-w-[650px] p-4 sm:p-6 bg-white dark:bg-card border-none rounded-3xl shadow-2xl overflow-y-auto max-h-[92vh]">
-        <DialogHeader className="mb-4 flex flex-row items-center justify-between gap-4">
-          <div>
-            <DialogTitle className="text-lg font-black uppercase tracking-wide flex items-center gap-2">
-              Pedido #PED-{pedido.numero_pedido}
+      <DialogContent className="sm:max-w-[620px] max-h-[90vh] overflow-y-auto rounded-3xl p-6 bg-white">
+        <DialogHeader className="pb-4 border-b">
+          <div className="flex items-center justify-between">
+            <DialogTitle className="text-xl font-black text-slate-800 tracking-tight">
+              PEDIDO #PED-{pedido.numero_pedido}
             </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Detalles del pedido, estado de pago e inventario.
-            </DialogDescription>
+            <div className="flex items-center gap-2">
+              <Badge className={`font-bold px-2.5 py-0.5 rounded-lg text-[10px] uppercase tracking-wider ${
+                pedido.estado === 'pendiente' ? 'bg-amber-100 text-amber-800 border-amber-250' :
+                pedido.estado === 'preparado' ? 'bg-indigo-100 text-indigo-800 border-indigo-250' :
+                pedido.estado === 'entregado' ? 'bg-emerald-100 text-emerald-800 border-emerald-250' :
+                'bg-rose-100 text-rose-800 border-rose-250'
+              }`}>
+                {pedido.estado === 'pendiente' ? 'Pendiente' :
+                 pedido.estado === 'preparado' ? 'Preparado' :
+                 pedido.estado === 'entregado' ? 'Entregado' : 'Cancelado'}
+              </Badge>
+              <Badge className={`font-bold px-2.5 py-0.5 rounded-lg text-[10px] uppercase tracking-wider ${
+                isPaid ? 'bg-emerald-100 text-emerald-800 border-emerald-250' : 'bg-rose-100 text-rose-800 border-rose-250'
+              }`}>
+                {isPaid ? 'Pagado' : 'Impago'}
+              </Badge>
+            </div>
           </div>
-          <div className="flex gap-1.5 items-center mr-4">
-            {getEstadoBadge(pedido.estado)}
-            {getPagoBadge(pedido.estado_pago)}
-          </div>
+          <DialogDescription className="text-xs text-muted-foreground mt-1 font-medium">
+            Detalles del pedido, estado de pago e inventario.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Metadata Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border border-border/40 p-4 rounded-2xl bg-muted/10 text-xs">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-foreground font-bold">
-                <User className="size-4 text-indigo-500 shrink-0" />
-                <span>Cliente: {pedido.cliente_nombre || 'Cliente General'}</span>
+        {/* Order Details Body */}
+        <div className="py-6 space-y-6">
+          {/* Section 1: Customer & Delivery */}
+          <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-semibold text-slate-700">
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-2 text-slate-500">
+                <User className="size-4 text-emerald-600" />
+                <span>Cliente: <strong className="text-slate-800 font-extrabold">{pedido.cliente_nombre || 'General'}</strong></span>
               </div>
-              <div className="flex items-center gap-2 text-muted-foreground font-semibold">
-                <Clock className="size-4 shrink-0" />
-                <span>Fecha: {pedido.fecha ? format(pedido.fecha.toDate(), 'dd/MM/yyyy HH:mm:ss') : 'N/A'}</span>
+              <div className="flex items-center gap-2 text-slate-500">
+                <Clock className="size-4 text-emerald-600" />
+                <span>Fecha: <span className="text-slate-800 font-bold">{formattedDate}</span></span>
               </div>
             </div>
-
-            <div className="space-y-2">
-              {pedido.direccion_entrega && (
-                <div className="flex items-center gap-2 text-foreground font-bold">
-                  <MapPin className="size-4 text-emerald-500 shrink-0" />
-                  <span className="truncate">Dirección: {pedido.direccion_entrega}</span>
-                </div>
-              )}
-              {pedido.metodo_pago && (
-                <div className="flex items-center gap-2 text-muted-foreground font-semibold">
-                  <DollarSign className="size-4 text-amber-500 shrink-0" />
-                  <span className="capitalize">Medio de Pago: {pedido.metodo_pago}</span>
-                </div>
-              )}
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-2 text-slate-500">
+                <MapPin className="size-4 text-emerald-600" />
+                <span className="truncate" title={pedido.direccion_entrega}>
+                  Dirección: <strong className="text-slate-800 font-extrabold">{pedido.direccion_entrega || 'Retiro en Local'}</strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-500">
+                <DollarSign className="size-4 text-emerald-600" />
+                <span>Medio de Pago: <strong className="text-slate-800 font-extrabold capitalize">{pedido.metodo_pago || 'No definido'}</strong></span>
+              </div>
             </div>
           </div>
 
+          {/* Notes */}
           {pedido.notas && (
-            <div className="border border-border/40 p-3.5 rounded-2xl bg-amber-500/5 text-xs text-amber-600 dark:text-amber-400 font-semibold leading-relaxed">
-              <span className="font-black uppercase tracking-wider block mb-1">Notas del Pedido:</span>
-              "{pedido.notas}"
+            <div className="bg-amber-50/30 border border-amber-100/50 rounded-2xl p-4 text-xs font-bold text-amber-900/90 space-y-1">
+              <span className="text-[10px] tracking-wider text-amber-600 uppercase font-black">Notas del Pedido:</span>
+              <p className="italic font-bold">"{pedido.notas}"</p>
             </div>
           )}
 
-          {/* Tabla de Productos */}
-          <div className="border border-border/40 rounded-2xl overflow-hidden">
+          {/* Section 2: Items Table */}
+          <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
             <Table>
-              <TableHeader className="bg-muted/10">
+              <TableHeader className="bg-slate-50">
                 <TableRow>
-                  <TableHead className="text-xs font-bold pl-4">Producto</TableHead>
-                  <TableHead className="text-xs font-bold text-center">Cant.</TableHead>
-                  <TableHead className="text-xs font-bold text-right">Unitario</TableHead>
-                  <TableHead className="text-xs font-bold text-right pr-4">Subtotal</TableHead>
+                  <TableHead className="font-extrabold text-[10px] text-slate-500 uppercase h-9">Producto</TableHead>
+                  <TableHead className="font-extrabold text-[10px] text-slate-500 uppercase h-9 text-center">Cant.</TableHead>
+                  <TableHead className="font-extrabold text-[10px] text-slate-500 uppercase h-9 text-right">Unitario</TableHead>
+                  <TableHead className="font-extrabold text-[10px] text-slate-500 uppercase h-9 text-right">Subtotal</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pedido.items.map((item) => (
-                  <TableRow key={item.producto_id} className="text-xs hover:bg-muted/5">
-                    <TableCell className="font-bold pl-4">{item.nombre}</TableCell>
-                    <TableCell className="font-mono text-center">
-                      {item.cantidad} {item.es_caja ? (item.tipo_empaque || 'Caja') : item.unidad}
+                {pedido.items.map((item, idx) => (
+                  <TableRow key={idx} className="hover:bg-slate-50/50">
+                    <TableCell className="font-extrabold text-slate-700 text-xs py-3">{item.nombre}</TableCell>
+                    <TableCell className="font-bold text-slate-500 text-xs py-3 text-center">
+                      {item.cantidad} {item.unidad}
                     </TableCell>
-                    <TableCell className="text-right font-mono font-bold">
+                    <TableCell className="font-bold text-slate-800 text-xs py-3 text-right">
                       {formatCLPCurrency(item.precio_unitario)}
                     </TableCell>
-                    <TableCell className="text-right font-mono font-black text-foreground pr-4">
+                    <TableCell className="font-extrabold text-slate-800 text-xs py-3 text-right">
                       {formatCLPCurrency(item.total)}
                     </TableCell>
                   </TableRow>
@@ -178,67 +192,75 @@ export function OrderDetailModal() {
             </Table>
           </div>
 
-          <div className="flex justify-between items-center bg-muted/10 px-4 py-3 rounded-2xl border border-border/30">
-            <span className="text-xs font-black uppercase text-muted-foreground tracking-wider">Total</span>
-            <span className="text-lg font-black text-primary">{formatCLPCurrency(pedido.total)}</span>
+          {/* Section 3: Totals */}
+          <div className="flex justify-between items-center bg-slate-50/30 border border-slate-100/50 rounded-2xl p-4">
+            <span className="font-extrabold text-slate-500 text-[11px] uppercase tracking-wider">Total</span>
+            <span className="font-black text-emerald-600 text-xl">{formatCLPCurrency(pedido.total)}</span>
           </div>
 
-          {/* Sección de Acciones / Entregas */}
+          {/* Section 4: Operational actions */}
           {!isFinalState && (
-            <div className="border border-border/40 p-4 rounded-2xl bg-muted/20 space-y-4">
-              <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Truck className="size-4 text-indigo-500" />
-                Acciones de Gestión
-              </h3>
-
-              {pedido.estado === 'pendiente' && (
-                <div className="flex flex-col gap-2">
-                  <p className="text-[11px] text-muted-foreground font-semibold">El pedido se encuentra registrado. Una vez empaquetado y listo, márcalo como preparado.</p>
-                  <Button
-                    onClick={() => handleActualizarEstado(pedido.id, 'preparado', toast)}
-                    className="w-full font-bold h-10 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 transition-transform"
-                  >
-                    <Package className="mr-2 size-4" /> Marcar como Preparado
-                  </Button>
+            <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/10 space-y-4">
+              <div className="flex items-start gap-2.5">
+                <Package className="size-5 text-indigo-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Acciones de Gestión</h4>
+                  <p className="text-slate-400 font-medium text-[11px]">
+                    {pedido.estado === 'pendiente' 
+                      ? 'El pedido se encuentra registrado. Una vez empaquetado y listo, márcalo como preparado.' 
+                      : 'El pedido está preparado. Procede a registrar la entrega y/o el cobro.'}
+                  </p>
                 </div>
-              )}
+              </div>
 
-              {pedido.estado === 'preparado' && (
-                <div className="space-y-4">
-                  {pedido.estado_pago === 'pendiente' ? (
-                    <div className="space-y-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Método de Cobro en Entrega</Label>
-                        <Select
-                          value={metodoPago}
-                          onValueChange={(val: MetodoPago) => setMetodoPago(val)}
-                        >
-                          <SelectTrigger className="w-full h-9 rounded-xl text-xs font-bold bg-card border border-border">
-                            <SelectValue placeholder="Selecciona método de cobro" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="efectivo">Efectivo (Dinero en caja)</SelectItem>
-                            <SelectItem value="transferencia">Transferencia Bancaria</SelectItem>
-                            <SelectItem value="tarjeta">Tarjeta Débito/Crédito</SelectItem>
-                            <SelectItem value="fiado">Fiado (Registrar deuda a cliente)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {!sesionActiva && (
-                        <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-600 dark:text-rose-400 font-bold rounded-xl flex items-center gap-1.5">
-                          <XCircle className="size-4 shrink-0" />
-                          Debes abrir la caja desde Inicio antes de poder entregar y cobrar.
+              {pedido.estado === 'pendiente' ? (
+                <Button
+                  onClick={handleMarcarComoPreparado}
+                  className="w-full font-bold h-10 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 transition-transform"
+                >
+                  <Package className="mr-2 size-4" /> Marcar como Preparado
+                </Button>
+              ) : (
+                <div>
+                  {!isPaid ? (
+                    isDelivery ? (
+                      /* Despacho + Cobro */
+                      <div className="space-y-3">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Seleccionar Medio de Pago:</label>
+                          <Select 
+                            value={metodoPago} 
+                            onValueChange={(val: MetodoPago) => setMetodoPago(val)}
+                          >
+                            <SelectTrigger className="w-full h-10 rounded-xl border-slate-200/80 bg-white font-bold text-xs">
+                              <SelectValue placeholder="Seleccionar Pago" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white rounded-xl border border-slate-100 font-bold text-xs text-slate-700">
+                              <SelectItem value="efectivo">Efectivo</SelectItem>
+                              <SelectItem value="transferencia">Transferencia</SelectItem>
+                              <SelectItem value="debito">Tarjeta de Débito</SelectItem>
+                              <SelectItem value="credito">Tarjeta de Crédito</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
-                      )}
-
-                      <Button
-                        onClick={handleEntregarPedido}
-                        className="w-full font-bold h-10 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95 transition-transform"
-                      >
-                        <Truck className="mr-2 size-4" /> Entregar y Cobrar Pedido
-                      </Button>
-                    </div>
+                        <Button
+                          onClick={handleEntregarYCobrarPedido}
+                          className="w-full font-bold h-10 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95 transition-transform"
+                        >
+                          <Truck className="mr-2 size-4" /> Registrar Entrega y Cobrar Pedido
+                        </Button>
+                      </div>
+                    ) : (
+                      /* Retiro + Cobro */
+                      <div className="space-y-2">
+                        <Button
+                          onClick={handleCobrarRetiro}
+                          className="w-full font-bold h-10 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95 transition-transform"
+                        >
+                          <DollarSign className="mr-2 size-4" /> Registrar Cobro (Retiro)
+                        </Button>
+                      </div>
+                    )
                   ) : (
                     <div className="space-y-2">
                       <p className="text-[11px] text-muted-foreground font-semibold">El pedido ya ha sido cancelado/pagado previamente, solo falta realizar el despacho.</p>
@@ -260,34 +282,40 @@ export function OrderDetailModal() {
         <DialogFooter className="pt-3 border-t flex flex-row items-center justify-between gap-4">
           <div>
             {!isFinalState && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  if(confirm('¿Seguro que deseas cancelar este pedido?')) {
-                    handleActualizarEstado(pedido.id, 'cancelado', toast);
-                  }
-                }}
-                className="rounded-xl text-xs font-bold h-10 px-4 text-rose-500 hover:bg-rose-500/10 hover:text-rose-600"
-              >
-                Cancelar Pedido
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="rounded-xl text-xs font-bold h-10 px-4 text-rose-500 hover:bg-rose-500/10 hover:text-rose-600"
+                  >
+                    Cancelar Pedido
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="rounded-2xl max-w-sm bg-white">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="font-extrabold text-slate-800">¿Cancelar Pedido?</AlertDialogTitle>
+                    <AlertDialogDescription className="text-sm text-slate-500">
+                      Esta acción marcará el pedido #PED-{pedido.numero_pedido} como cancelado. No se descontará inventario ni se registrará la venta.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter className="flex sm:flex-row gap-2">
+                    <AlertDialogCancel className="rounded-xl font-bold border-slate-200">
+                      Atrás
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => handleActualizarEstado(pedido.id, 'cancelado', toast)}
+                      className="rounded-xl font-bold bg-rose-600 text-white hover:bg-rose-700"
+                    >
+                      Confirmar Cancelación
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
           </div>
 
           <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                if(confirm('¿Seguro que deseas eliminar este pedido permanentemente? No se podrá recuperar.')) {
-                  handleEliminarPedido(pedido.id, toast);
-                }
-              }}
-              className="rounded-xl text-xs font-bold h-10 px-3 text-muted-foreground hover:text-rose-500 hover:bg-muted"
-            >
-              <Trash2 className="size-4" />
-            </Button>
             <Button
               type="button"
               variant="secondary"

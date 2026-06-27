@@ -38,7 +38,7 @@ export class PedidosService {
   /**
    * Crea un pedido con un número correlativo transaccional.
    */
-  static async crearPedido(pedidoData: Omit<Pedido, 'id' | 'numero_pedido' | 'fecha' | 'createdAt' | 'updatedAt'>): Promise<string> {
+  static async crearPedido(pedidoData: Omit<Pedido, 'id' | 'numero_pedido' | 'fecha' | 'createdAt' | 'updatedAt'>): Promise<{ id: string; numeroPedido: number }> {
     const metadataRef = doc(db, 'metadata', 'pedidos');
 
     return await runTransaction(db, async (transaction) => {
@@ -61,7 +61,7 @@ export class PedidosService {
       };
 
       transaction.set(pedidoRef, fullPedido);
-      return pedidoRef.id;
+      return { id: pedidoRef.id, numeroPedido };
     });
   }
 

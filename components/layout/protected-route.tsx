@@ -17,7 +17,7 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
   useEffect(() => {
     if (!loading) {
       if (!isAuthenticated) {
-        router.replace('/');
+        router.replace('/login');
       } else if (requiredRole && user?.role !== requiredRole && user?.role !== 'admin') {
         // Redirigir a inicio si no tiene permisos
         router.replace('/inicio');

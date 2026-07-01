@@ -81,13 +81,19 @@ export class ProductosService {
       updatedAt: Timestamp.now()
     };
 
+    const cleanData = Object.fromEntries(
+      Object.entries(productoData).filter(([_, v]) => v !== undefined)
+    );
+
+    console.log('Guardando producto en Firestore con datos limpios:', cleanData);
+
     if (isNew) {
       await setDoc(docRef, {
-        ...productoData,
+        ...cleanData,
         createdAt: Timestamp.now()
       });
     } else {
-      await updateDoc(docRef, productoData);
+      await updateDoc(docRef, cleanData);
     }
 
     return targetId;

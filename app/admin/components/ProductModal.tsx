@@ -60,6 +60,7 @@ export const ProductModal: React.FC = () => {
   const handleCostoCajaChange = useAdminStore((state) => state.handleCostoCajaChange);
   const handleCantidadCajaChange = useAdminStore((state) => state.handleCantidadCajaChange);
   const handleMargenChange = useAdminStore((state) => state.handleMargenChange);
+  const handlePrecioChange = useAdminStore((state) => state.handlePrecioChange);
   const handleAutocompletarIA = useAdminStore((state) => state.handleAutocompletarIA);
   const handleGuardar = useAdminStore((state) => state.handleGuardar);
 
@@ -344,10 +345,15 @@ export const ProductModal: React.FC = () => {
                       handleCostoChange(e.target.value);
                     }
                   }}
-                  className="pl-6 h-10 rounded-xl text-[16px] md:text-xs font-bold border-indigo-500/20 bg-background"
+                  className="pl-6 h-10 rounded-xl text-[16px] md:text-xs font-bold border-indigo-500/20 bg-background disabled:opacity-80 disabled:cursor-not-allowed"
                   placeholder="0"
-                  disabled={guardando || analizandoIA}
+                  disabled={guardando || analizandoIA || editando !== null}
                 />
+                {editando && (
+                  <p className="text-[9px] text-indigo-600/70 dark:text-indigo-400/70 mt-1 font-medium">
+                    * El costo solo se actualiza mediante compras de stock.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -387,8 +393,11 @@ export const ProductModal: React.FC = () => {
                   type="text"
                   inputMode="decimal"
                   value={formData.precio}
-                  onChange={(e) => setFormData({ precio: normalizeMoneyInput(e.target.value) })}
-                  onBlur={() => setFormData({ precio: formData.precio ? formatCLPCurrency(parseChileanMoneyInput(formData.precio)) : '' })}
+                  onChange={(e) => handlePrecioChange(e.target.value)}
+                  onBlur={() => {
+                    const formatted = formData.precio ? formatCLPCurrency(parseChileanMoneyInput(formData.precio)) : '';
+                    handlePrecioChange(formatted);
+                  }}
                   onFocus={() => setFormData({ precio: normalizeMoneyInput(formData.precio) })}
                   className="pl-7 h-11 rounded-xl text-[16px] md:text-sm font-black border-border/77 bg-background shadow-sm w-full"
                   placeholder="0"

@@ -81,6 +81,7 @@ interface AdminState {
   handleCostoCajaChange: (val: string) => void;
   handleCantidadCajaChange: (val: string) => void;
   handleMargenChange: (val: string) => void;
+  handlePrecioChange: (val: string) => void;
   handleCompraCajaChange: (field: keyof CompraDataState, val: string) => void;
 
   // Images
@@ -285,6 +286,25 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       if (costCaja > 0) {
         const precioCajaSugerido = roundToChileanDecena(Math.round(costCaja * (1 + margenNum / 100)));
         nextForm.precio_caja = precioCajaSugerido > 0 ? formatCLPCurrency(precioCajaSugerido) : '';
+      }
+      return { formData: nextForm };
+    });
+  },
+
+  handlePrecioChange: (val) => {
+    const cleanVal = normalizeMoneyInput(val);
+    const precioNum = parseChileanMoneyInput(cleanVal);
+    const costoNum = parseFloat(get().formData.costo) || 0;
+
+    set((state) => {
+      const nextForm = {
+        ...state.formData,
+        precio: cleanVal,
+      };
+
+      if (costoNum > 0) {
+        const calculatedMargin = Math.round(((precioNum - costoNum) / costoNum) * 100);
+        nextForm.margen = calculatedMargin.toString();
       }
       return { formData: nextForm };
     });

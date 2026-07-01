@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatCLPCurrency } from '@/lib/utils';
-import { Clock, User, Package, MapPin, Truck, DollarSign } from 'lucide-react';
+import { Clock, User, Package, MapPin, Truck, DollarSign, MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { MetodoPago } from '@/lib/types/pos';
@@ -40,6 +40,7 @@ export function OrderDetailModal() {
   
   // Global Store box session
   const sesionActiva = useAppStore((state) => state.sesionActiva);
+  const clientes = useAppStore((state) => state.clientes);
 
   // Local Pedidos Store
   const detailModalOpen = usePedidosStore((state) => state.detailModalOpen);
@@ -59,8 +60,30 @@ export function OrderDetailModal() {
   // Format creation date
   const formattedDate = pedido.fecha ? format(pedido.fecha.toDate(), 'dd/MM/yyyy HH:mm:ss') : '';
 
+  // Utility to format WhatsApp link
+  const formatWhatsAppLink = (telefono: string, message: string) => {
+    let cleanNum = telefono.replace(/\D/g, '');
+    if (cleanNum.length === 9 && cleanNum.startsWith('9')) {
+      cleanNum = '56' + cleanNum;
+    }
+    return `https://wa.me/${cleanNum}?text=${encodeURIComponent(message)}`;
+  };
+
+  const clientObj = clientes.find(c => c.id === pedido.cliente_id);
+  const telefono = clientObj?.telefono;
+
   const handleMarcarComoPreparado = async () => {
     await handleActualizarEstado(pedido.id, 'preparado', toast);
+    
+    if (telefono) {
+      const isPickup = !pedido.direccion_entrega || pedido.direccion_entrega.toLowerCase().includes('retiro');
+      const message = isPickup 
+        ? `¡Hola! Tu pedido #PED-${pedido.numero_pedido} de FrutaPOS ya está listo para retirar en nuestro local. ¡Te esperamos!`
+        : `¡Hola! Tu pedido #PED-${pedido.numero_pedido} de FrutaPOS ya está preparado y en camino a tu dirección.`;
+      
+      const link = formatWhatsAppLink(telefono, message);
+      window.open(link, '_blank');
+    }
   };
 
   const handleCobrarRetiro = async () => {
@@ -221,7 +244,22 @@ export function OrderDetailModal() {
                   <Package className="mr-2 size-4" /> Marcar como Preparado
                 </Button>
               ) : (
-                <div>
+                <div className="space-y-3">
+                  {pedido.estado === 'preparado' && telefono && (
+                    <Button
+                      onClick={() => {
+                        const isPickup = !pedido.direccion_entrega || pedido.direccion_entrega.toLowerCase().includes('retiro');
+                        const message = isPickup 
+                          ? `¡Hola! Tu pedido #PED-${pedido.numero_pedido} de FrutaPOS ya está listo para retirar en nuestro local. ¡Te esperamos!`
+                          : `¡Hola! Tu pedido #PED-${pedido.numero_pedido} de FrutaPOS ya está preparado y en camino a tu dirección.`;
+                        window.open(formatWhatsAppLink(telefono, message), '_blank');
+                      }}
+                      className="w-full font-bold h-10 rounded-xl bg-green-600 text-white hover:bg-green-700 active:scale-95 transition-transform flex items-center justify-center gap-2 border border-green-500/20"
+                    >
+                      <MessageSquare className="size-4" /> Enviar WhatsApp de Listo
+                    </Button>
+                  )}
+
                   {!isPaid ? (
                     isDelivery ? (
                       /* Despacho + Cobro */

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/lib/store/useAppStore';
 import { useInicioStore } from './hooks/useInicioStore';
@@ -32,7 +32,9 @@ import {
   Settings, 
   CreditCard, 
   Send, 
-  AlertTriangle 
+  AlertTriangle,
+  Bell,
+  AlertCircle
 } from 'lucide-react';
 
 function InicioPage() {

@@ -28,6 +28,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Helper to log exactly what was returned if it isn't JSON
+    const safeJson = async (response: Response) => {
+      const text = await response.text();
+      try {
+        return JSON.parse(text);
+      } catch (err) {
+        console.error(`[API Usuarios] La respuesta de ${response.url} no es JSON. Código: ${response.status}. Contenido:`, text.substring(0, 1000));
+        throw new Error(`La respuesta de ${response.url} no es JSON. Código: ${response.status}`);
+      }
+    };
+
     // 1. Crear usuario en Firebase Auth usando REST API
     const authUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`;
     const authRes = await fetch(authUrl, {
@@ -40,7 +51,7 @@ export async function POST(req: NextRequest) {
       })
     });
 
-    const authData = await authRes.json();
+    const authData = await safeJson(authRes);
 
     if (!authRes.ok) {
       console.error('Error al registrar en Firebase Auth:', authData);
@@ -53,7 +64,7 @@ export async function POST(req: NextRequest) {
     const { localId, idToken } = authData; // localId es el UID del nuevo usuario
 
     // 2. Actualizar el displayName en Firebase Auth usando REST API
-    const updateProfileUrl = `https://identitytoolkit.googleapis.com/v1/accounts:updateProfile?key=${apiKey}`;
+    const updateProfileUrl = `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${apiKey}`;
     const profileRes = await fetch(updateProfileUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -65,7 +76,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (!profileRes.ok) {
-      const profileData = await profileRes.json();
+      const profileData = await safeJson(profileRes);
       console.error('Error al actualizar perfil de usuario:', profileData);
       // No fallamos toda la operación, solo logueamos el error
     }
@@ -106,7 +117,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (!firestoreRes.ok) {
-      const firestoreData = await firestoreRes.json();
+      const firestoreData = await safeJson(firestoreRes);
       console.error('Error al guardar el usuario en Firestore REST API:', firestoreData);
       return NextResponse.json(
         { error: firestoreData.error?.message || 'Error al guardar los detalles del usuario en la base de datos.' },
